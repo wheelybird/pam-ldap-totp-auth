@@ -1,0 +1,42 @@
+# SSH server configuration for PAM LDAP TOTP testing
+
+# Listen on all interfaces
+Port 22
+ListenAddress 0.0.0.0
+
+# Host keys
+HostKey /etc/ssh/ssh_host_rsa_key
+HostKey /etc/ssh/ssh_host_ecdsa_key
+HostKey /etc/ssh/ssh_host_ed25519_key
+
+# Logging
+SyslogFacility AUTH
+LogLevel VERBOSE
+
+# Authentication settings
+PermitRootLogin no
+PubkeyAuthentication no
+PasswordAuthentication no
+
+# CRITICAL: Enable PAM and challenge-response
+UsePAM yes
+ChallengeResponseAuthentication yes
+KbdInteractiveAuthentication yes
+
+# Disable other auth methods
+HostbasedAuthentication no
+IgnoreRhosts yes
+PermitEmptyPasswords no
+
+# Session settings
+X11Forwarding no
+PrintMotd no
+PrintLastLog yes
+TCPKeepAlive yes
+AcceptEnv LANG LC_*
+
+# Subsystem for SFTP
+Subsystem sftp /usr/lib/openssh/sftp-server
+
+# Allow specific users (configured via LDAP)
+AllowUsers testuser

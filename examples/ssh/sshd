@@ -1,0 +1,28 @@
+#%PAM-1.0
+# PAM configuration for SSH with LDAP-backed TOTP
+#
+# Install this file to /etc/pam.d/sshd
+#
+# This example works with both authentication modes:
+#   - Challenge mode (default): Separate prompts for password and TOTP
+#   - Append mode: Password+TOTP concatenated
+#
+# Set mode in /etc/security/pam_ldap_totp_auth.conf:
+#   totp_mode challenge   # Recommended for SSH (separate prompts)
+#   totp_mode append      # Alternative (concatenated input)
+#
+# Also configure in /etc/ssh/sshd_config:
+#   UsePAM yes
+#   PasswordAuthentication yes
+
+# TOTP + LDAP authentication
+auth required pam_ldap_totp.so forward_pass
+auth required pam_ldap.so use_first_pass
+
+# Standard account/session management
+account required pam_unix.so
+account required pam_ldap.so
+
+session required pam_unix.so
+session required pam_mkhomedir.so skel=/etc/skel umask=0077
+session optional pam_ldap.so

@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  openldap:
+    image: osixia/openldap:1.5.0
+    container_name: sshtest-openldap
+    hostname: openldap
+    environment:
+      LDAP_ORGANISATION: "Example Inc"
+      LDAP_DOMAIN: "example.com"
+      LDAP_ADMIN_PASSWORD: "password"
+      LDAP_CONFIG_PASSWORD: "config"
+      LDAP_RFC2307BIS_SCHEMA: "true"
+      LDAP_TLS: "false"
+    volumes:
+      - /tmp/pam-ldap-totp-test/ldap-data:/var/lib/ldap
+      - /tmp/pam-ldap-totp-test/ldap-config:/etc/ldap/slapd.d
+    ports:
+      - "10389:389"
+    networks:
+      - ssh-test-net
+
+  ssh-server:
+    build:
+      context: ../..
+      dockerfile: tests/ssh-test/Dockerfile
+    container_name: sshtest-ssh
+    hostname: ssh-server
+    depends_on:
+      - openldap
+    ports:
+      - "10022:22"
+    networks:
+      - ssh-test-net
+    volumes:
+      - /tmp/pam-ldap-totp-test/test-results:/test/results
+
+networks:
+  ssh-test-net:
+    driver: bridge

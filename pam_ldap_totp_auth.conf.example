@@ -1,0 +1,262 @@
+#
+# pam_ldap_totp_auth.conf
+#
+# This configuration file controls the pam_ldap_totp_auth module that performs
+# both LDAP password authentication and TOTP validation for an LDAP user.
+#
+# Format:
+#   - One keyword per line followed by whitespace and value
+#   - Values are NOT quoted (quotes become literal characters)
+#   - Empty values (keyword with no value) are treated as empty strings
+#   - Lines starting with # are comments
+#   - Keywords must be alphanumeric with underscores only
+#
+# Security Note:
+#   This file may contain sensitive credentials (ldap_bind_password).
+#   Permissions should be set to 600 (root read/write only):
+#   chmod 600 /etc/security/pam_ldap_totp_auth.conf
+#
+
+# ============================================================================
+# LDAP Connection Settings (Required)
+# ============================================================================
+
+# LDAP server URI
+# Supports: ldap://, ldaps://, or ldapi:// schemes
+# Examples:
+#   ldap://ldap.example.com
+#   ldaps://ldap.example.com:636
+#   ldap://192.168.1.10
+# REQUIRED
+ldap_uri ldap://localhost
+
+# LDAP base DN for user searches
+# All user searches start from this location in the directory tree
+# Example: dc=example,dc=com
+# REQUIRED
+ldap_base dc=example,dc=com
+
+# ============================================================================
+# LDAP Authentication Settings (Optional)
+# ============================================================================
+
+# LDAP bind DN for service account
+# If specified, the module will bind as this DN before searching for users
+# If not specified, anonymous bind is attempted (not recommended for production)
+# Example: cn=pam-auth,ou=services,dc=example,dc=com
+# Optional - leave blank for anonymous bind
+ldap_bind_dn
+
+# LDAP bind password for service account
+# Password for the DN specified in ldap_bind_dn
+# SECURITY: Ensure this file has 600 permissions
+# Optional - only needed if ldap_bind_dn is set
+ldap_bind_password
+
+# LDAP attribute used for login username
+# The attribute that contains the username entered by the user
+# Common values: uid, cn, sAMAccountName (Active Directory)
+# Default: uid
+login_attribute uid
+
+# Require unique LDAP match
+# If true, authentication fails when multiple users match the login attribute
+# If false, first match is used (matches pam_ldap behaviour)
+# Values: true, false, 1, 0, yes, no, on, off
+# Default: false
+require_unique_match false
+
+# ============================================================================
+# TLS/SSL Settings
+# ============================================================================
+
+# TLS mode
+# Controls encryption for LDAP connections
+# Values:
+#   none      - No encryption (not recommended for production)
+#   starttls  - Use StartTLS on standard LDAP port (recommended)
+#   ldaps     - Use LDAPS (LDAP over SSL) on port 636
+# Default: starttls
+tls_mode starttls
+
+# Verify TLS certificates
+# Whether to verify the LDAP server's TLS certificate
+# SECURITY: Set to true in production to prevent man-in-the-middle attacks
+# Values: true, false, 1, 0, yes, no, on, off
+# Default: true
+tls_verify_cert true
+
+# TLS CA certificate file
+# Path to the Certificate Authority bundle for verifying LDAP server certificates
+# Only used when tls_verify_cert is true
+# Common locations:
+#   Debian/Ubuntu: /etc/ssl/certs/ca-certificates.crt
+#   RHEL/CentOS:   /etc/pki/tls/certs/ca-bundle.crt
+# Default: /etc/ssl/certs/ca-certificates.crt
+tls_ca_cert_file /etc/ssl/certs/ca-certificates.crt
+
+# ============================================================================
+# TOTP Settings
+# ============================================================================
+
+# Enable TOTP validation
+# Controls whether TOTP codes are required in addition to passwords
+# Values: true, false, 1, 0, yes, no, on, off
+# Default: true
+totp_enabled true
+
+# TOTP authentication mode
+# Controls how users provide password and TOTP code
+# Values:
+#   challenge - Separate prompts for password and TOTP code (DEFAULT, RECOMMENDED)
+#               User experience:
+#                 Password: [user enters password]
+#                 TOTP code: [user enters 6-digit code]
+#               Compatible with: SSH, sudo, login, any PAM-enabled service with conversation support
+#               NOT compatible with: OpenVPN (see below)
+#
+#   append    - Password and TOTP concatenated together
+#               User experience:
+#                 Password: [user enters password123456]
+#               Compatible with: OpenVPN, SSH, sudo, login, all PAM-enabled services
+#               Use this mode for OpenVPN deployments
+#
+# IMPORTANT: OpenVPN does not support PAM challenge-response (conversation function).
+#            For OpenVPN, you MUST use totp_mode append.
+#            Challenge mode will fail with "PAM conversation unavailable" error.
+#
+# Default: challenge
+totp_mode challenge
+
+# TOTP prompt message (challenge mode only)
+# Custom message shown when requesting TOTP code
+# Only used when totp_mode is 'challenge'
+# Examples: "TOTP code:", "Enter MFA token:", "2FA Code:"
+# Default: TOTP code:
+challenge_prompt TOTP code:
+
+# TOTP secret attribute
+# LDAP attribute containing the Base32-encoded TOTP secret
+# Default: totpSecret
+totp_attribute totpSecret
+
+# TOTP secret prefix
+# Prefix string stripped from the TOTP secret value before Base32 decoding
+# Use empty string if secrets are stored without prefix
+# Default: empty string
+totp_prefix
+
+# Scratch code attribute
+# LDAP attribute containing backup/recovery codes (multi-valued)
+# Default: totpScratchCode
+scratch_attribute totpScratchCode
+
+# Scratch code prefix
+# Prefix string stripped from scratch codes before validation
+# Example: If LDAP stores "TOTP-SCRATCH:12345678", set prefix to "TOTP-SCRATCH:"
+# Default: TOTP-SCRATCH:
+scratch_prefix TOTP-SCRATCH:
+
+# TOTP status attribute
+# LDAP attribute containing MFA status: none, pending, active, disabled, bypassed
+# Used for grace period enforcement
+# Default: totpStatus
+status_attribute totpStatus
+
+# TOTP enrolled date attribute
+# LDAP attribute containing ISO 8601 timestamp of MFA enrolment
+# Used for calculating grace period expiry
+# Format: YYYYMMDDHHmmssZ (e.g., 20251016120000Z)
+# Default: totpEnrolledDate
+enrolled_date_attribute totpEnrolledDate
+
+# TOTP time step
+# Number of seconds each TOTP code is valid
+# RFC 6238 standard is 30 seconds
+# Do not change unless you have a specific requirement
+# Default: 30
+time_step 30
+
+# TOTP time window
+# Number of time steps to check before and after current time
+# Compensates for clock drift between server and client
+# Value of 3 allows ±90 seconds tolerance (3 × 30 second time_step)
+# SECURITY: Larger values reduce security, smaller values increase false rejects
+# Default: 3
+window_size 3
+
+# ============================================================================
+# MFA Enforcement Settings
+# ============================================================================
+
+# Grace period days
+# Number of days users in MFA-required groups can authenticate without TOTP
+# After this period, users with totpStatus=pending are denied access
+# Default: 7
+grace_period_days 7
+
+# Enforcement mode
+# Controls how strictly MFA is enforced
+# Values:
+#   graceful   - Allow grace period for new users
+#   strict     - Enforce immediately, deny all access without MFA
+#   warn_only  - Log warnings but allow access (for testing)
+# Default: graceful
+enforcement_mode graceful
+
+# ============================================================================
+# Debug
+# ============================================================================
+
+# Debug mode
+# Enable verbose logging to syslog and stderr
+# SECURITY: May log sensitive information; disable in production
+# Values: true, false, 1, 0, yes, no, on, off
+# Default: false
+debug false
+
+# ============================================================================
+# Example Configurations
+# ============================================================================
+
+# Example 1: Basic LDAP + TOTP with anonymous bind
+# ldap_uri ldap://ldap.example.com
+# ldap_base dc=example,dc=com
+# totp_enabled true
+# tls_mode starttls
+# tls_verify_cert true
+
+# Example 2: LDAP + TOTP with service account
+# ldap_uri ldap://ldap.example.com
+# ldap_base dc=example,dc=com
+# ldap_bind_dn cn=pam-auth,ou=services,dc=example,dc=com
+# ldap_bind_password SecurePassword123
+# totp_enabled true
+# tls_mode starttls
+
+# Example 3: Password-only (TOTP disabled)
+# ldap_uri ldap://ldap.example.com
+# ldap_base dc=example,dc=com
+# totp_enabled false
+# tls_mode starttls
+
+# Example 4: Strict MFA enforcement
+# ldap_uri ldaps://ldap.example.com:636
+# ldap_base dc=example,dc=com
+# ldap_bind_dn cn=pam-auth,ou=services,dc=example,dc=com
+# ldap_bind_password SecurePassword123
+# totp_enabled true
+# enforcement_mode strict
+# grace_period_days 0
+# require_unique_match true
+# tls_verify_cert true
+
+# Example 5: Active Directory integration
+# ldap_uri ldap://ad.example.com
+# ldap_base dc=example,dc=com
+# ldap_bind_dn cn=svc-pam,ou=Service Accounts,dc=example,dc=com
+# ldap_bind_password ADServicePassword
+# login_attribute sAMAccountName
+# totp_enabled true
+# tls_mode starttls
+# require_unique_match true

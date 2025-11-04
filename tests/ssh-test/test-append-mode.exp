@@ -1,0 +1,63 @@
+#!/usr/bin/expect -f
+# Test SSH authentication with append mode
+# This script expects a single password prompt where password+TOTP are concatenated
+
+set timeout 30
+set password "testpass"
+set totp_secret "JBSWY3DPEHPK3PXP"
+
+# Generate TOTP code
+set totp_code [exec oathtool --totp --base32 $totp_secret]
+
+# Concatenate password and TOTP
+set combined "${password}${totp_code}"
+
+puts "========================================="
+puts "Testing SSH Append Mode"
+puts "========================================="
+puts "Password: $password"
+puts "TOTP Code: $totp_code"
+puts "Combined: $combined"
+puts ""
+
+# Attempt SSH connection
+spawn ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 22 testuser@localhost
+
+# Expect password prompt (user enters password+TOTP together)
+expect {
+    "Password:" {
+        send "$combined\r"
+    }
+    timeout {
+        puts "ERROR: Password prompt not received"
+        exit 1
+    }
+}
+
+# Check if authentication succeeded (should NOT see TOTP prompt in append mode)
+expect {
+    "TOTP code:" {
+        puts "\n✗ Append mode FAILED: Received TOTP prompt (should be single prompt)"
+        exit 1
+    }
+    "Welcome" {
+        puts "\n✓ Append mode authentication SUCCEEDED"
+        send "exit\r"
+        exit 0
+    }
+    "$" {
+        puts "\n✓ Append mode authentication SUCCEEDED"
+        send "exit\r"
+        exit 0
+    }
+    "Permission denied" {
+        puts "\n✗ Append mode authentication FAILED"
+        exit 1
+    }
+    timeout {
+        puts "\n✗ Append mode authentication TIMEOUT"
+        exit 1
+    }
+}
+
+expect eof

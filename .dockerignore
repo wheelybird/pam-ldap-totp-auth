@@ -1,0 +1,28 @@
+# Exclude deprecated files from Docker builds
+deprecated/
+tests/deprecated/
+
+# Exclude build artefacts
+obj/
+obj_phase2/
+*.so
+*.o
+
+# Exclude test executables
+tests/test_config
+tests/test_ldap_auth
+tests/test_totp
+tests/test_security
+tests/test_challenge_response
+tests/obj/
+
+# Exclude SSH test infrastructure (has permission-restricted LDAP files)
+tests/ssh-test/
+
+# Exclude git
+.git/
+.gitignore
+
+# Exclude documentation
+README.md
+*.md

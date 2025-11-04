@@ -1,0 +1,25 @@
+# Compiled PAM module
+*.so
+
+# Object files
+*.o
+obj/*.o
+
+# Test executables
+tests/test_config
+tests/test_totp
+tests/test_extract
+tests/test_challenge_response
+
+# Test data directories (should be in /tmp, but ignore if accidentally created locally)
+tests/ssh-test/ldap-data/
+tests/ssh-test/ldap-config/
+tests/ssh-test/ldap-init/
+tests/ssh-test/test-results/
+
+# Editor and IDE files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/

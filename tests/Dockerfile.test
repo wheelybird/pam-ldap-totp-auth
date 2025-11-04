@@ -1,0 +1,26 @@
+FROM ubuntu:24.04
+
+# Install build dependencies
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        build-essential \
+        gcc \
+        make \
+        libpam0g-dev \
+        libldap2-dev \
+        liboath-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy PAM module source
+COPY . /build/pam-ldap-totp-auth
+WORKDIR /build/pam-ldap-totp-auth
+
+# Build the module
+RUN make clean && make
+
+# Verify the module was created
+RUN ls -lh pam_ldap_totp_auth.so && \
+    echo "✓ PAM module built successfully: pam_ldap_totp_auth.so"
+
+# Keep container running for inspection
+CMD ["/bin/bash"]

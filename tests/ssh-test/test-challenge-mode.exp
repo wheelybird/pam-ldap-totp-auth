@@ -1,0 +1,66 @@
+#!/usr/bin/expect -f
+# Test SSH authentication with challenge-response mode
+# This script expects two separate prompts: password, then TOTP code
+
+set timeout 30
+set password "testpass"
+set totp_secret "JBSWY3DPEHPK3PXP"
+
+# Generate TOTP code
+set totp_code [exec oathtool --totp --base32 $totp_secret]
+
+puts "========================================="
+puts "Testing SSH Challenge-Response Mode"
+puts "========================================="
+puts "Password: $password"
+puts "TOTP Code: $totp_code"
+puts ""
+
+# Attempt SSH connection
+spawn ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 22 testuser@localhost
+
+# Expect password prompt
+expect {
+    "Password:" {
+        send "$password\r"
+    }
+    timeout {
+        puts "ERROR: Password prompt not received"
+        exit 1
+    }
+}
+
+# Expect TOTP prompt
+expect {
+    "TOTP code:" {
+        send "$totp_code\r"
+    }
+    timeout {
+        puts "ERROR: TOTP prompt not received"
+        exit 1
+    }
+}
+
+# Check if authentication succeeded
+expect {
+    "Welcome" {
+        puts "\n✓ Challenge-response authentication SUCCEEDED"
+        send "exit\r"
+        exit 0
+    }
+    "$" {
+        puts "\n✓ Challenge-response authentication SUCCEEDED"
+        send "exit\r"
+        exit 0
+    }
+    "Permission denied" {
+        puts "\n✗ Challenge-response authentication FAILED"
+        exit 1
+    }
+    timeout {
+        puts "\n✗ Challenge-response authentication TIMEOUT"
+        exit 1
+    }
+}
+
+expect eof

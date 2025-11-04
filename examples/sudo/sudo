@@ -1,0 +1,21 @@
+#%PAM-1.0
+# PAM configuration for sudo with LDAP-backed TOTP
+#
+# Install this file to /etc/pam.d/sudo
+#
+# This example works with both authentication modes:
+#   - Challenge mode (default): Separate prompts for password and TOTP
+#   - Append mode: Password+TOTP concatenated
+#
+# Set mode in /etc/security/pam_ldap_totp_auth.conf:
+#   totp_mode challenge   # Recommended for sudo (separate prompts)
+#   totp_mode append      # Alternative (concatenated input)
+
+auth required pam_ldap_totp.so forward_pass
+auth required pam_ldap.so use_first_pass
+
+account sufficient pam_ldap.so
+account required pam_unix.so
+
+session required pam_unix.so
+session optional pam_ldap.so

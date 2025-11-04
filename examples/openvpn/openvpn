@@ -1,0 +1,25 @@
+#%PAM-1.0
+# PAM configuration for OpenVPN with LDAP-backed TOTP
+#
+# Install this file to /etc/pam.d/openvpn
+#
+# IMPORTANT: OpenVPN requires APPEND MODE
+#
+# OpenVPN does NOT support PAM challenge-response (conversation function).
+# You MUST configure append mode in /etc/security/pam_ldap_totp_auth.conf:
+#
+#   totp_mode append
+#
+# With append mode, users enter password+TOTP concatenated:
+#   Password: mypassword123456
+#
+# If you use challenge mode with OpenVPN, authentication will fail with:
+#   "Failed to get TOTP code: PAM conversation unavailable"
+#
+# The pam_ldap_totp module validates TOTP codes and forwards the password
+# to the next module for LDAP authentication.
+
+auth required pam_ldap_totp.so forward_pass
+auth required pam_ldap.so use_first_pass
+
+account sufficient pam_permit.so

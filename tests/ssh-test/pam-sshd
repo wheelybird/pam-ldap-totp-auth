@@ -1,0 +1,16 @@
+# PAM configuration for SSH with LDAP TOTP
+# This configuration enables challenge-response authentication
+
+# LDAP TOTP authentication (challenge-response mode)
+# This module prompts separately for password and TOTP code
+# It validates both password (via LDAP bind) and TOTP code
+auth    required    pam_ldap_totp_auth.so
+
+# Account management
+@include common-account
+
+# Session management
+@include common-session
+
+# Password management
+@include common-password
