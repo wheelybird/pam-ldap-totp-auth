@@ -559,7 +559,25 @@ static int authenticate_unified(pam_handle_t *pamh,
 
       if (totp_status) free(totp_status);
 
-      /* No secret and not in grace period */
+      /* No secret and not in grace period - check enforcement mode */
+      if (config->enforcement_mode &&
+          (strcmp(config->enforcement_mode, "graceful") == 0 ||
+           strcmp(config->enforcement_mode, "warn_only") == 0)) {
+        /* MFA is optional - allow password-only authentication */
+        INFO_LOG("No TOTP configured for user '%s', allowing password-only auth (enforcement_mode=%s)",
+                 username, config->enforcement_mode);
+        if (strcmp(config->enforcement_mode, "warn_only") == 0) {
+          pam_syslog(pamh, LOG_NOTICE,
+                     "Warning: User '%s' authenticated without MFA (password-only)", username);
+        }
+        SECURE_FREE_STRING(password);
+        SECURE_FREE_STRING(otp);
+        SECURE_FREE_STRING(input_copy);
+        pam_ldap_disconnect(ld);
+        return PAM_SUCCESS;
+      }
+
+      /* Strict mode - TOTP required but not configured */
       pam_syslog(pamh, LOG_NOTICE, "TOTP required but not configured for user '%s'",
                  username);
       SECURE_FREE_STRING(password);
