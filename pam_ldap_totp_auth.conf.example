@@ -196,11 +196,25 @@ window_size 3
 grace_period_days 7
 
 # Enforcement mode
-# Controls how strictly MFA is enforced
+# Controls how strictly MFA is enforced and how password-only authentication is handled
 # Values:
-#   graceful   - Allow grace period for new users
-#   strict     - Enforce immediately, deny all access without MFA
-#   warn_only  - Log warnings but allow access (for testing)
+#   graceful   - (DEFAULT) Allow password-only authentication for users without TOTP configured
+#                Allow grace period for users with totpStatus=pending
+#                Recommended for mixed environments with optional MFA
+#
+#   warn_only  - Allow password-only authentication for users without TOTP configured
+#                Log security warnings to syslog for monitoring/auditing
+#                Useful for testing MFA rollout before enforcing
+#
+#   strict     - REQUIRE TOTP for all users
+#                Deny access to users without TOTP configured (no password-only)
+#                No grace period (grace_period_days setting is ignored)
+#                Use only when all users have MFA configured
+#
+# Password-only behavior:
+#   - graceful/warn_only: Users without totpUser objectClass can authenticate with password alone
+#   - strict: Users must have TOTP configured; password-only authentication is rejected
+#
 # Default: graceful
 enforcement_mode graceful
 
@@ -260,3 +274,21 @@ debug false
 # totp_enabled true
 # tls_mode starttls
 # require_unique_match true
+
+# Example 6: Mixed environment (optional MFA)
+# Some users have MFA, some don't - both can authenticate
+# ldap_uri ldap://ldap.example.com
+# ldap_base dc=example,dc=com
+# totp_enabled true
+# enforcement_mode graceful
+# Users with TOTP configured: password+code required
+# Users without TOTP: password-only authentication allowed
+
+# Example 7: MFA rollout with monitoring
+# Testing MFA before enforcement, with audit logging
+# ldap_uri ldap://ldap.example.com
+# ldap_base dc=example,dc=com
+# totp_enabled true
+# enforcement_mode warn_only
+# All users can authenticate (even without MFA)
+# Security warnings logged for password-only authentications

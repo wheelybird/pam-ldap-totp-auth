@@ -180,29 +180,21 @@ static int check_grace_period(const char *enrolled_date, int grace_days, pam_con
  * OWASP Security: Does not log actual password or complete OTP code.
  * Debug mode shows only first 2 and last 2 digits of OTP for verification.
  */
-static int extract_otp_from_password(const char *full_password, char **password, char **otp, pam_config_t *config) {
+/*
+ * Extract OTP from password (append mode)
+ *
+ * Strategy: Always extract 6 digits for TOTP first.
+ * If TOTP validation fails, caller can check if 8+ digits exist and re-extract.
+ *
+ * otp_len parameter: 6 for TOTP (default), 8 for scratch code (retry)
+ */
+static int extract_otp_from_password(const char *full_password, char **password, char **otp, int otp_len, pam_config_t *config) {
   size_t len = strlen(full_password);
 
-  /* Minimum length: at least 1 char password + 6 digit OTP */
-  if (len < 7) {
-    DEBUG_LOG(config, "OTP extraction failed: input too short (min 7 chars required)");
+  /* Minimum length: at least 1 char password + otp_len digits */
+  if (len < (size_t)(otp_len + 1)) {
+    DEBUG_LOG(config, "OTP extraction failed: input too short (min %d chars required)", otp_len + 1);
     return 0;
-  }
-
-  /* Determine OTP length: 8 digits for scratch codes, 6 for TOTP */
-  int otp_len = 6;
-  if (len >= 9) {
-    /* Check if last 8 chars are all digits (scratch code) */
-    int all_digits = 1;
-    for (int i = len - 8; i < (int)len; i++) {
-      if (!isdigit((unsigned char)full_password[i])) {
-        all_digits = 0;
-        break;
-      }
-    }
-    if (all_digits) {
-      otp_len = 8;
-    }
   }
 
   /* Validate that last otp_len characters are digits */
@@ -233,7 +225,7 @@ static int extract_otp_from_password(const char *full_password, char **password,
   /* Debug: Show redacted OTP for verification (first 2 + last 2 digits only) */
   if (config->debug) {
     if (otp_len == 6) {
-      DEBUG_LOG(config, "Extracted 6-digit OTP: %c%c**%c%c (password_len=%zu)",
+      DEBUG_LOG(config, "Extracted 6-digit TOTP: %c%c**%c%c (password_len=%zu)",
                 (*otp)[0], (*otp)[1], (*otp)[4], (*otp)[5], pwd_len);
     } else if (otp_len == 8) {
       DEBUG_LOG(config, "Extracted 8-digit scratch code: %c%c****%c%c (password_len=%zu)",
@@ -241,6 +233,23 @@ static int extract_otp_from_password(const char *full_password, char **password,
     }
   }
 
+  return 1;
+}
+
+/*
+ * Check if input has at least N trailing digits
+ */
+static int has_trailing_digits(const char *str, int count) {
+  size_t len = strlen(str);
+  if (len < (size_t)count) {
+    return 0;
+  }
+
+  for (int i = len - count; i < (int)len; i++) {
+    if (!isdigit((unsigned char)str[i])) {
+      return 0;
+    }
+  }
   return 1;
 }
 
@@ -472,7 +481,9 @@ static int authenticate_unified(pam_handle_t *pamh,
      */
     DEBUG_LOG(config, "TOTP enabled - attempting OTP extraction from input");
 
-    int otp_extracted = extract_otp_from_password(input_copy, &password, &otp, config);
+    /* Always extract 6 digits first (TOTP) */
+    int otp_extracted = extract_otp_from_password(input_copy, &password, &otp, 6, config);
+    int using_8_digit_code = 0;  /* Track if we switched to 8-digit extraction */
 
     if (!otp_extracted) {
       /* OTP extraction failed - could be plain password for grace period user */
@@ -489,19 +500,57 @@ static int authenticate_unified(pam_handle_t *pamh,
     }
 
     /* Validate password via LDAP bind */
-    DEBUG_LOG(config, "Validating password via LDAP bind");
+    DEBUG_LOG(config, "Validating password via LDAP bind (with 6-digit OTP extraction)");
     retval = ldap_validate_password(pamh, ld, username, password, config);
 
     if (retval != PAM_SUCCESS) {
-      INFO_LOG("Password authentication failed for user '%s'", username);
-      SECURE_FREE_STRING(password);
-      SECURE_FREE_STRING(otp);
-      SECURE_FREE_STRING(input_copy);
-      pam_ldap_disconnect(ld);
-      return PAM_AUTH_ERR;
-    }
+      /* Password validation failed with 6-digit extraction */
+      /* Check if we can try 8-digit extraction for scratch code */
+      DEBUG_LOG(config, "Password validation failed with 6-digit extraction");
 
-    INFO_LOG("Password authentication successful for user '%s'", username);
+      if (has_trailing_digits(input_copy, 8)) {
+        DEBUG_LOG(config, "Input has 8+ trailing digits, trying 8-digit extraction");
+
+        /* Free the 6-digit extraction results */
+        SECURE_FREE_STRING(password);
+        SECURE_FREE_STRING(otp);
+
+        /* Re-extract with 8 digits */
+        if (!extract_otp_from_password(input_copy, &password, &otp, 8, config)) {
+          DEBUG_LOG(config, "Failed to re-extract with 8 digits");
+          SECURE_FREE_STRING(input_copy);
+          pam_ldap_disconnect(ld);
+          return PAM_AUTH_ERR;
+        }
+
+        /* Try password validation again with 8-digit extraction */
+        DEBUG_LOG(config, "Validating password via LDAP bind (with 8-digit scratch code extraction)");
+        retval = ldap_validate_password(pamh, ld, username, password, config);
+
+        if (retval != PAM_SUCCESS) {
+          INFO_LOG("Password authentication failed for user '%s' (tried both 6 and 8 digit extraction)", username);
+          SECURE_FREE_STRING(password);
+          SECURE_FREE_STRING(otp);
+          SECURE_FREE_STRING(input_copy);
+          pam_ldap_disconnect(ld);
+          return PAM_AUTH_ERR;
+        }
+
+        INFO_LOG("Password authentication successful for user '%s' (8-digit extraction)", username);
+        /* Continue with scratch code validation below - OTP now contains 8 digits */
+        using_8_digit_code = 1;
+      } else {
+        /* No 8 digits available */
+        INFO_LOG("Password authentication failed for user '%s'", username);
+        SECURE_FREE_STRING(password);
+        SECURE_FREE_STRING(otp);
+        SECURE_FREE_STRING(input_copy);
+        pam_ldap_disconnect(ld);
+        return PAM_AUTH_ERR;
+      }
+    } else {
+      INFO_LOG("Password authentication successful for user '%s' (6-digit extraction)", username);
+    }
 
     /* Get TOTP secret from LDAP */
     DEBUG_LOG(config, "Fetching TOTP secret for user: %s", username);
@@ -599,20 +648,64 @@ static int authenticate_unified(pam_handle_t *pamh,
       return PAM_AUTH_ERR;
     }
 
-    /* Validate TOTP code */
-    DEBUG_LOG(config, "Validating TOTP code");
+    /* Validate TOTP or scratch code based on what was extracted */
+    if (using_8_digit_code) {
+      /* We already extracted 8 digits due to password validation failure */
+      /* Skip TOTP validation and go straight to scratch code */
+      DEBUG_LOG(config, "Using 8-digit code - validating as scratch code");
 
-    if (validate_totp_code(pamh, secret, otp, config)) {
-      INFO_LOG("TOTP authentication successful for user '%s'", username);
-      retval = PAM_SUCCESS;
-    } else {
-      /* Try scratch code */
-      DEBUG_LOG(config, "TOTP failed, trying scratch code");
       if (ldap_check_scratch_code(pamh, ld, username, otp, config)) {
         INFO_LOG("Scratch code authentication successful for user '%s'", username);
         retval = PAM_SUCCESS;
       } else {
-        INFO_LOG("TOTP and scratch code authentication failed for user '%s'", username);
+        INFO_LOG("Scratch code validation failed for user '%s'", username);
+        pam_syslog(pamh, LOG_NOTICE, "Invalid scratch code for user '%s'", username);
+        retval = PAM_AUTH_ERR;
+      }
+    } else if (validate_totp_code(pamh, secret, otp, config)) {
+      /* 6-digit TOTP validation successful */
+      INFO_LOG("TOTP authentication successful for user '%s'", username);
+      retval = PAM_SUCCESS;
+    } else {
+      /* TOTP failed - check if input has 8+ digits for scratch code */
+      DEBUG_LOG(config, "TOTP validation failed (6 digits)");
+
+      if (has_trailing_digits(input_copy, 8)) {
+        /* Re-extract with 8 digits for scratch code */
+        DEBUG_LOG(config, "Input has 8+ trailing digits, re-extracting for scratch code");
+
+        char *password_8 = NULL;
+        char *otp_8 = NULL;
+
+        if (extract_otp_from_password(input_copy, &password_8, &otp_8, 8, config)) {
+          /* Validate password with 8-digit extraction */
+          DEBUG_LOG(config, "Validating password with 8-digit OTP extraction");
+          int pwd_result = ldap_validate_password(pamh, ld, username, password_8, config);
+
+          if (pwd_result == PAM_SUCCESS) {
+            /* Password valid, try scratch code */
+            DEBUG_LOG(config, "Password valid, checking 8-digit scratch code");
+            if (ldap_check_scratch_code(pamh, ld, username, otp_8, config)) {
+              INFO_LOG("Scratch code authentication successful for user '%s'", username);
+              retval = PAM_SUCCESS;
+            } else {
+              INFO_LOG("Scratch code validation failed for user '%s'", username);
+              retval = PAM_AUTH_ERR;
+            }
+          } else {
+            DEBUG_LOG(config, "Password validation failed with 8-digit extraction");
+            retval = PAM_AUTH_ERR;
+          }
+
+          SECURE_FREE_STRING(password_8);
+          SECURE_FREE_STRING(otp_8);
+        } else {
+          DEBUG_LOG(config, "Failed to re-extract with 8 digits");
+          retval = PAM_AUTH_ERR;
+        }
+      } else {
+        /* No 8 digits available - authentication failed */
+        INFO_LOG("TOTP validation failed and no scratch code available for user '%s'", username);
         pam_syslog(pamh, LOG_NOTICE, "Invalid TOTP code for user '%s'", username);
         retval = PAM_AUTH_ERR;
       }

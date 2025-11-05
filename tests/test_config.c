@@ -196,7 +196,76 @@ START_TEST(test_parse_mfa_enforcement)
 }
 END_TEST
 
-/* Test 7: Empty values are treated as empty strings */
+/* Test 7: Enforcement mode - graceful (allows password-only) */
+START_TEST(test_enforcement_mode_graceful)
+{
+  const char *config =
+    "ldap_uri ldap://localhost\n"
+    "ldap_base dc=example,dc=com\n"
+    "enforcement_mode graceful\n";
+
+  char *config_file = create_temp_config(config);
+  ck_assert_ptr_nonnull(config_file);
+
+  pam_config_t cfg;
+  int result = parse_config(config_file, &cfg);
+
+  ck_assert_int_eq(result, 0);
+  ck_assert_str_eq(cfg.enforcement_mode, "graceful");
+
+  free_config(&cfg);
+  unlink(config_file);
+  free(config_file);
+}
+END_TEST
+
+/* Test 8: Enforcement mode - warn_only (allows password-only with warning) */
+START_TEST(test_enforcement_mode_warn_only)
+{
+  const char *config =
+    "ldap_uri ldap://localhost\n"
+    "ldap_base dc=example,dc=com\n"
+    "enforcement_mode warn_only\n";
+
+  char *config_file = create_temp_config(config);
+  ck_assert_ptr_nonnull(config_file);
+
+  pam_config_t cfg;
+  int result = parse_config(config_file, &cfg);
+
+  ck_assert_int_eq(result, 0);
+  ck_assert_str_eq(cfg.enforcement_mode, "warn_only");
+
+  free_config(&cfg);
+  unlink(config_file);
+  free(config_file);
+}
+END_TEST
+
+/* Test 9: Enforcement mode - strict (requires TOTP) */
+START_TEST(test_enforcement_mode_strict)
+{
+  const char *config =
+    "ldap_uri ldap://localhost\n"
+    "ldap_base dc=example,dc=com\n"
+    "enforcement_mode strict\n";
+
+  char *config_file = create_temp_config(config);
+  ck_assert_ptr_nonnull(config_file);
+
+  pam_config_t cfg;
+  int result = parse_config(config_file, &cfg);
+
+  ck_assert_int_eq(result, 0);
+  ck_assert_str_eq(cfg.enforcement_mode, "strict");
+
+  free_config(&cfg);
+  unlink(config_file);
+  free(config_file);
+}
+END_TEST
+
+/* Test 10: Empty values are treated as empty strings */
 START_TEST(test_parse_empty_values)
 {
   const char *config =
@@ -227,7 +296,7 @@ START_TEST(test_parse_empty_values)
 }
 END_TEST
 
-/* Test 8: Comments and blank lines are ignored */
+/* Test 11: Comments and blank lines are ignored */
 START_TEST(test_parse_comments_and_blanks)
 {
   const char *config =
@@ -256,7 +325,7 @@ START_TEST(test_parse_comments_and_blanks)
 }
 END_TEST
 
-/* Test 9: Default values when config file missing */
+/* Test 12: Default values when config file missing */
 START_TEST(test_default_values)
 {
   pam_config_t cfg;
@@ -267,7 +336,7 @@ START_TEST(test_default_values)
 }
 END_TEST
 
-/* Test 10: Required settings validation */
+/* Test 13: Required settings validation */
 START_TEST(test_required_settings)
 {
   /* Missing ldap_base (required) */
@@ -286,7 +355,7 @@ START_TEST(test_required_settings)
 }
 END_TEST
 
-/* Test 11: OWASP - Invalid characters in keyword */
+/* Test 14: OWASP - Invalid characters in keyword */
 START_TEST(test_security_invalid_keyword)
 {
   /* Keywords must be alphanumeric + underscore only */
@@ -311,7 +380,7 @@ START_TEST(test_security_invalid_keyword)
 }
 END_TEST
 
-/* Test 12: Boolean value parsing */
+/* Test 15: Boolean value parsing */
 START_TEST(test_parse_boolean_values)
 {
   const char *config =
@@ -355,6 +424,9 @@ Suite *config_suite(void) {
   tcase_add_test(tc_core, test_parse_totp_disabled);
   tcase_add_test(tc_core, test_parse_tls_config);
   tcase_add_test(tc_core, test_parse_mfa_enforcement);
+  tcase_add_test(tc_core, test_enforcement_mode_graceful);
+  tcase_add_test(tc_core, test_enforcement_mode_warn_only);
+  tcase_add_test(tc_core, test_enforcement_mode_strict);
   tcase_add_test(tc_core, test_parse_empty_values);
   tcase_add_test(tc_core, test_parse_comments_and_blanks);
   tcase_add_test(tc_core, test_default_values);

@@ -3,7 +3,7 @@
 
 CC = gcc
 CFLAGS = -Wall -Wextra -O0 -g -I../include -I.
-LIBS = -lpam -lldap -llber -loath
+LIBS = -lpam -lldap -llber -loath -lcheck -lsubunit -lm -lrt -lpthread
 
 # Source files from parent directory
 SRC_DIR = ../src
@@ -42,7 +42,7 @@ $(OBJDIR):
 test_config: test_config.c $(OBJDIR)/config.o $(OBJDIR)/security_utils.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
 
-test_ldap_auth: test_ldap_auth.c $(OBJDIR)/ldap_auth.o $(OBJDIR)/ldap_query.o $(OBJDIR)/security_utils.o
+test_ldap_auth: test_ldap_auth.c $(OBJDIR)/ldap_auth.o $(OBJDIR)/ldap_query.o $(OBJDIR)/config.o $(OBJDIR)/security_utils.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
 
 test_totp: test_totp.c $(OBJDIR)/totp_validate.o $(OBJDIR)/security_utils.o

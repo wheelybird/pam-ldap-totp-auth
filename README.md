@@ -165,7 +165,7 @@ window_size 3
 
 # MFA enforcement
 grace_period_days 7
-enforcement_mode graceful
+enforcement_mode graceful  # Options: graceful (default), warn_only, strict
 
 # Multiple match handling (default: false, matches pam_ldap behavior)
 require_unique_match false
@@ -177,6 +177,18 @@ debug false
 **⚠️ Authentication mode compatibility:**
 - **Challenge mode** (default): Works with SSH, sudo, login - **This doesn't work with OpenVPN**
 - **Append mode**: Works with all services including OpenVPN
+
+**MFA enforcement modes:**
+
+The `enforcement_mode` option controls how strictly MFA is enforced and how password-only authentication is handled:
+
+- `enforcement_mode graceful` (default) - Allow password-only authentication for users without TOTP configured. Users with `totpStatus=pending` get a grace period. **Recommended for mixed environments.**
+- `enforcement_mode warn_only` - Allow password-only authentication but log security warnings to syslog. **Useful for MFA rollout testing.**
+- `enforcement_mode strict` - Require TOTP for ALL users. Users without TOTP configured are denied access. **Use only when all users have MFA.**
+
+**Password-only authentication behavior:**
+- `graceful` and `warn_only` modes: Users without the `totpUser` objectClass can authenticate with password alone
+- `strict` mode: All users must have TOTP configured; password-only authentication is rejected
 
 **Multiple match handling:**
 
