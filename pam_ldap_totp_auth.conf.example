@@ -148,14 +148,9 @@ totp_prefix
 
 # Scratch code attribute
 # LDAP attribute containing backup/recovery codes (multi-valued)
+# Stored as plain 8-digit numbers (e.g., 12345678)
 # Default: totpScratchCode
 scratch_attribute totpScratchCode
-
-# Scratch code prefix
-# Prefix string stripped from scratch codes before validation
-# Example: If LDAP stores "TOTP-SCRATCH:12345678", set prefix to "TOTP-SCRATCH:"
-# Default: TOTP-SCRATCH:
-scratch_prefix TOTP-SCRATCH:
 
 # TOTP status attribute
 # LDAP attribute containing MFA status: none, pending, active, disabled, bypassed
@@ -217,6 +212,35 @@ grace_period_days 7
 #
 # Default: graceful
 enforcement_mode graceful
+
+# ============================================================================
+# MFA Enrollment Settings
+# ============================================================================
+
+# Grace period attribute
+# LDAP attribute containing user-specific grace period (in days)
+# If this attribute is set on the user's LDAP entry, it overrides grace_period_days
+# Allows per-user grace period customization
+# Default: mfaGracePeriodDays
+grace_period_attribute mfaGracePeriodDays
+
+# Grace message
+# Custom message shown to users during their grace period (challenge-response mode only)
+# This message is displayed after showing days remaining
+# Examples:
+#   "Contact your administrator to set up MFA"
+#   "Please visit https://auth.example.com/manage_mfa"
+#   "Call the helpdesk at ext. 1234 for MFA enrollment assistance"
+# Default: "Contact your administrator to set up MFA"
+grace_message Contact your administrator to set up MFA
+
+# Show grace period message
+# Display informational message to users during grace period
+# Message shows days remaining and the grace_message configured above
+# Only works in challenge-response mode (not append mode)
+# Values: true, false, 1, 0, yes, no, on, off
+# Default: true
+show_grace_message true
 
 # ============================================================================
 # Debug
@@ -292,3 +316,25 @@ debug false
 # enforcement_mode warn_only
 # All users can authenticate (even without MFA)
 # Security warnings logged for password-only authentications
+
+# Example 8: Grace period with custom message
+# Users in grace period get custom message
+# ldap_uri ldap://ldap.example.com
+# ldap_base dc=example,dc=com
+# totp_enabled true
+# totp_mode challenge
+# grace_period_days 7
+# grace_period_attribute mfaGracePeriodDays
+# grace_message Please visit https://auth.example.com/manage_mfa to complete enrollment
+# show_grace_message true
+# User experience during grace period:
+#   Password: [enters password]
+#
+#   *** MFA ENROLLMENT REQUIRED ***
+#   You have 5 days remaining to set up multi-factor authentication.
+#   Please visit https://auth.example.com/manage_mfa to complete enrollment
+#
+#   [login proceeds normally]
+#
+# Note: If user's LDAP entry has mfaGracePeriodDays=14, that value
+#       will be used instead of the global grace_period_days=7

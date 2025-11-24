@@ -15,6 +15,44 @@
 #include <stdlib.h>
 
 /*
+ * Send an informational message to the user (no response expected)
+ * Uses PAM_TEXT_INFO message type which displays to user without prompting
+ *
+ * Returns: PAM_SUCCESS or PAM_CONV_ERR
+ */
+static int send_info_message(pam_handle_t *pamh, const char *message) {
+  struct pam_conv *conv;
+  struct pam_message msg;
+  const struct pam_message *msgp;
+  struct pam_response *resp = NULL;
+  int retval;
+
+  /* Get conversation function */
+  retval = pam_get_item(pamh, PAM_CONV, (const void **)&conv);
+  if (retval != PAM_SUCCESS || !conv || !conv->conv) {
+    return PAM_CONV_ERR;
+  }
+
+  /* Setup informational message */
+  msg.msg_style = PAM_TEXT_INFO;
+  msg.msg = message;
+  msgp = &msg;
+
+  /* Call conversation function */
+  retval = conv->conv(1, &msgp, &resp, conv->appdata_ptr);
+
+  /* Free response if allocated (shouldn't be for TEXT_INFO, but be safe) */
+  if (resp) {
+    if (resp[0].resp) {
+      free(resp[0].resp);
+    }
+    free(resp);
+  }
+
+  return retval;
+}
+
+/*
  * Prompt user for input using PAM conversation
  *
  * More portable than pam_prompt() - uses direct PAM conversation API
@@ -355,11 +393,66 @@ static int authenticate_challenge_response(pam_handle_t *pamh,
                                                 config->enrolled_date_attribute, config);
       if (enrolled_date) {
         int grace_status = check_grace_period(enrolled_date, config->grace_period_days, config);
-        free(enrolled_date);
-        free(status);
 
         if (grace_status == 1) {
+          /* Within grace period - calculate days remaining and show message */
           INFO_LOG("User '%s' in grace period - TOTP not required yet", username);
+
+          /* Calculate days remaining for message */
+          if (config->show_grace_message) {
+            /* Get user-specific grace period from LDAP (if available) */
+            int grace_period_days = config->grace_period_days; /* Default from config */
+            char *user_grace_period = ldap_get_attribute(pamh, ld, username,
+                                                         config->grace_period_attribute, config);
+            if (user_grace_period && strlen(user_grace_period) > 0) {
+              int ldap_grace_days = atoi(user_grace_period);
+              if (ldap_grace_days > 0) {
+                grace_period_days = ldap_grace_days;
+                DEBUG_LOG(config, "Using LDAP grace period: %d days", grace_period_days);
+              }
+              free(user_grace_period);
+            }
+
+            struct tm enrolled_tm = {0};
+            int year, month, day, hour, min, sec;
+
+            if (sscanf(enrolled_date, "%4d%2d%2d%2d%2d%2d",
+                       &year, &month, &day, &hour, &min, &sec) == 6) {
+              enrolled_tm.tm_year = year - 1900;
+              enrolled_tm.tm_mon = month - 1;
+              enrolled_tm.tm_mday = day;
+              enrolled_tm.tm_hour = hour;
+              enrolled_tm.tm_min = min;
+              enrolled_tm.tm_sec = sec;
+              enrolled_tm.tm_isdst = -1;
+
+              time_t enrolled_time = mktime(&enrolled_tm);
+              if (enrolled_time != -1) {
+                time_t current_time = time(NULL);
+                double seconds_elapsed = difftime(current_time, enrolled_time);
+                int days_elapsed = (int)(seconds_elapsed / (60 * 60 * 24));
+                int days_remaining = grace_period_days - days_elapsed;
+
+                /* Send informational message to user */
+                if (days_remaining > 0 && config->grace_message) {
+                  char message[512];
+                  snprintf(message, sizeof(message),
+                          "\n*** MFA ENROLLMENT REQUIRED ***\n"
+                          "You have %d day%s remaining to set up multi-factor authentication.\n"
+                          "%s\n",
+                          days_remaining,
+                          days_remaining == 1 ? "" : "s",
+                          config->grace_message);
+
+                  send_info_message(pamh, message);
+                }
+              }
+            }
+          }
+
+          free(enrolled_date);
+          free(status);
+
           if (password_response) {
             SECURE_FREE_STRING(password_response);
           }
@@ -367,12 +460,15 @@ static int authenticate_challenge_response(pam_handle_t *pamh,
           return PAM_SUCCESS;
         } else if (grace_status == 0) {
           INFO_LOG("Grace period expired for user '%s'", username);
+          free(enrolled_date);
+          free(status);
           if (password_response) {
             SECURE_FREE_STRING(password_response);
           }
           pam_ldap_disconnect(ld);
           return PAM_AUTH_ERR;
         }
+        free(enrolled_date);
       }
       free(status);
     } else if (status) {
@@ -572,12 +668,64 @@ static int authenticate_unified(pam_handle_t *pamh,
 
         int grace_result = check_grace_period(enrolled_date, config->grace_period_days, config);
 
-        if (enrolled_date) free(enrolled_date);
-        if (totp_status) free(totp_status);
-
         if (grace_result == 1) {
           /* Within grace period - allow access */
           INFO_LOG("User '%s' within grace period, allowing access", username);
+
+          /* Calculate days remaining for message (append mode - message won't display but log it) */
+          if (config->show_grace_message && enrolled_date) {
+            /* Get user-specific grace period from LDAP (if available) */
+            int grace_period_days = config->grace_period_days; /* Default from config */
+            char *user_grace_period = ldap_get_attribute(pamh, ld, username,
+                                                         config->grace_period_attribute, config);
+            if (user_grace_period && strlen(user_grace_period) > 0) {
+              int ldap_grace_days = atoi(user_grace_period);
+              if (ldap_grace_days > 0) {
+                grace_period_days = ldap_grace_days;
+                DEBUG_LOG(config, "Using LDAP grace period: %d days", grace_period_days);
+              }
+              free(user_grace_period);
+            }
+
+            struct tm enrolled_tm = {0};
+            int year, month, day, hour, min, sec;
+
+            if (sscanf(enrolled_date, "%4d%2d%2d%2d%2d%2d",
+                       &year, &month, &day, &hour, &min, &sec) == 6) {
+              enrolled_tm.tm_year = year - 1900;
+              enrolled_tm.tm_mon = month - 1;
+              enrolled_tm.tm_mday = day;
+              enrolled_tm.tm_hour = hour;
+              enrolled_tm.tm_min = min;
+              enrolled_tm.tm_sec = sec;
+              enrolled_tm.tm_isdst = -1;
+
+              time_t enrolled_time = mktime(&enrolled_tm);
+              if (enrolled_time != -1) {
+                time_t current_time = time(NULL);
+                double seconds_elapsed = difftime(current_time, enrolled_time);
+                int days_elapsed = (int)(seconds_elapsed / (60 * 60 * 24));
+                int days_remaining = grace_period_days - days_elapsed;
+
+                /* Send informational message (note: won't display in append mode like OpenVPN) */
+                if (days_remaining > 0 && config->grace_message) {
+                  char message[512];
+                  snprintf(message, sizeof(message),
+                          "\n*** MFA ENROLLMENT REQUIRED ***\n"
+                          "You have %d day%s remaining to set up multi-factor authentication.\n"
+                          "%s\n",
+                          days_remaining,
+                          days_remaining == 1 ? "" : "s",
+                          config->grace_message);
+
+                  send_info_message(pamh, message);
+                }
+              }
+            }
+          }
+
+          if (enrolled_date) free(enrolled_date);
+          if (totp_status) free(totp_status);
           SECURE_FREE_STRING(password);
           SECURE_FREE_STRING(otp);
           SECURE_FREE_STRING(input_copy);
@@ -588,6 +736,8 @@ static int authenticate_unified(pam_handle_t *pamh,
           INFO_LOG("Grace period expired for user '%s'", username);
           pam_syslog(pamh, LOG_NOTICE,
                      "Grace period expired - TOTP setup required for user '%s'", username);
+          if (enrolled_date) free(enrolled_date);
+          if (totp_status) free(totp_status);
           SECURE_FREE_STRING(password);
           SECURE_FREE_STRING(otp);
           SECURE_FREE_STRING(input_copy);
@@ -598,6 +748,8 @@ static int authenticate_unified(pam_handle_t *pamh,
           DEBUG_LOG(config, "Grace period check error - allowing access");
           INFO_LOG("User '%s' in pending status (grace period check failed), allowing access",
                    username);
+          if (enrolled_date) free(enrolled_date);
+          if (totp_status) free(totp_status);
           SECURE_FREE_STRING(password);
           SECURE_FREE_STRING(otp);
           SECURE_FREE_STRING(input_copy);
@@ -761,7 +913,7 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags,
     return PAM_USER_UNKNOWN;
   }
 
-  INFO_LOG("PAM module loaded for user '%s'", username);
+  INFO_LOG("PAM LDAP TOTP v%s loaded for user '%s'", PAM_LDAP_TOTP_VERSION, username);
 
   /* Parse configuration first to determine authentication mode */
   if (parse_config(PAM_CONFIG_FILE, &config) != 0) {

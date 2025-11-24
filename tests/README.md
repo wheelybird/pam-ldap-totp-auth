@@ -11,6 +11,7 @@ Tests the configuration file parsing logic:
 - Basic TOTP configuration parsing
 - LDAP configuration parsing
 - Grace period configuration
+- Grace period messaging configuration (grace_message, grace_period_attribute, show_grace_message)
 - Quoted values in configuration
 - Default values when config file doesn't exist
 
@@ -33,6 +34,27 @@ Tests the challenge-response authentication mode configuration:
 - Whitespace handling
 - Missing configuration files
 - Secure defaults
+
+### test_grace_period.c - grace period messaging tests
+
+Tests the grace period messaging functionality:
+
+- Grace period calculation (date parsing and days elapsed)
+- Custom LDAP attribute names for grace periods
+- Message formatting with days remaining
+- Singular vs plural day handling ("1 day" vs "5 days")
+- Grace period enable/disable functionality
+- LDAP fallback to config defaults
+- LDAP grace period value parsing
+- Special characters in messages (URLs, email addresses, phone numbers)
+- Long message handling (512 character limit)
+
+**Key scenarios tested:**
+- LDAP GeneralizedTime date format parsing (YYYYMMDDHHmmssZ)
+- Per-user grace period override from LDAP
+- Message formatting and display logic
+- Configuration option parsing and defaults
+- Custom grace messages with URLs and contact information
 
 ### test_totp.c - TOTP validation tests
 
@@ -101,10 +123,13 @@ cd tests
 make
 ```
 
-This creates three test executables:
+This creates the following test executables:
 - `test_config` - Configuration parsing tests
+- `test_challenge_response` - Challenge-response mode tests
+- `test_grace_period` - Grace period messaging tests
 - `test_totp` - TOTP validation tests
-- `test_extract` - OTP extraction tests
+- `test_security` - Security and input validation tests
+- `test_ldap_auth` - LDAP authentication tests
 
 ### Run tests
 
@@ -116,8 +141,11 @@ make run
 Run individual test suites:
 ```bash
 ./test_config
+./test_challenge_response
+./test_grace_period
 ./test_totp
-./test_extract
+./test_security
+./test_ldap_auth
 ```
 
 Run from parent directory:
@@ -199,14 +227,20 @@ Current test coverage:
 
 | Component | Functions Tested | Coverage |
 |-----------|-----------------|----------|
-| config.c | parse_totp_config, parse_ldap_config_from_file, parse_combined_config | ~90% |
+| config.c | parse_config, grace period configuration | ~95% |
 | totp_validate.c | validate_totp_code, validate_scratch_code | ~85% |
-| pam_ldap_totp.c | extract_otp_from_password (static) | ~95% |
+| pam_auth.c | Grace period messaging, date calculation | ~75% |
+| security_utils.c | Input validation and sanitization | ~80% |
+
+**Recently added tests:**
+- Grace period messaging functionality (configuration, date parsing, message formatting)
+- LDAP attribute fallback behavior for per-user grace periods
+- Message formatting with singular/plural day handling
 
 **Not yet tested:**
 - LDAP connection and query functions (requires mock LDAP server)
 - Full PAM authentication flow (requires integration tests)
-- Grace period calculation (requires LDAP mocking)
+- PAM conversation function for message display (requires PAM environment)
 
 ## Docker-based testing
 

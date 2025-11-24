@@ -409,6 +409,181 @@ START_TEST(test_parse_boolean_values)
 }
 END_TEST
 
+/* Test 16: Grace message parsing */
+START_TEST(test_parse_grace_message)
+{
+  const char *config =
+    "ldap_uri ldap://localhost\n"
+    "ldap_base dc=example,dc=com\n"
+    "grace_message Please visit https://auth.example.com/manage_mfa\n";
+
+  char *config_file = create_temp_config(config);
+  ck_assert_ptr_nonnull(config_file);
+
+  pam_config_t cfg;
+  int result = parse_config(config_file, &cfg);
+
+  ck_assert_int_eq(result, 0);
+  ck_assert_ptr_nonnull(cfg.grace_message);
+  ck_assert_str_eq(cfg.grace_message, "Please visit https://auth.example.com/manage_mfa");
+
+  free_config(&cfg);
+  unlink(config_file);
+  free(config_file);
+}
+END_TEST
+
+/* Test 17: Grace period attribute parsing */
+START_TEST(test_parse_grace_period_attribute)
+{
+  const char *config =
+    "ldap_uri ldap://localhost\n"
+    "ldap_base dc=example,dc=com\n"
+    "grace_period_attribute customGracePeriodDays\n";
+
+  char *config_file = create_temp_config(config);
+  ck_assert_ptr_nonnull(config_file);
+
+  pam_config_t cfg;
+  int result = parse_config(config_file, &cfg);
+
+  ck_assert_int_eq(result, 0);
+  ck_assert_ptr_nonnull(cfg.grace_period_attribute);
+  ck_assert_str_eq(cfg.grace_period_attribute, "customGracePeriodDays");
+
+  free_config(&cfg);
+  unlink(config_file);
+  free(config_file);
+}
+END_TEST
+
+/* Test 18: Show grace message parsing */
+START_TEST(test_parse_show_grace_message)
+{
+  const char *config =
+    "ldap_uri ldap://localhost\n"
+    "ldap_base dc=example,dc=com\n"
+    "show_grace_message false\n";
+
+  char *config_file = create_temp_config(config);
+  ck_assert_ptr_nonnull(config_file);
+
+  pam_config_t cfg;
+  int result = parse_config(config_file, &cfg);
+
+  ck_assert_int_eq(result, 0);
+  ck_assert_int_eq(cfg.show_grace_message, 0);
+
+  free_config(&cfg);
+  unlink(config_file);
+  free(config_file);
+}
+END_TEST
+
+/* Test 19: Grace period defaults */
+START_TEST(test_grace_period_defaults)
+{
+  const char *config =
+    "ldap_uri ldap://localhost\n"
+    "ldap_base dc=example,dc=com\n";
+
+  char *config_file = create_temp_config(config);
+  ck_assert_ptr_nonnull(config_file);
+
+  pam_config_t cfg;
+  int result = parse_config(config_file, &cfg);
+
+  ck_assert_int_eq(result, 0);
+
+  /* Check defaults */
+  ck_assert_ptr_nonnull(cfg.grace_message);
+  ck_assert_str_eq(cfg.grace_message, "Contact your administrator to set up MFA");
+  ck_assert_int_eq(cfg.show_grace_message, 1); /* Enabled by default */
+  ck_assert_ptr_nonnull(cfg.grace_period_attribute);
+  ck_assert_str_eq(cfg.grace_period_attribute, "mfaGracePeriodDays");
+
+  free_config(&cfg);
+  unlink(config_file);
+  free(config_file);
+}
+END_TEST
+
+/* Test 20: Complete grace period configuration */
+START_TEST(test_parse_complete_grace_config)
+{
+  const char *config =
+    "ldap_uri ldap://localhost\n"
+    "ldap_base dc=example,dc=com\n"
+    "grace_period_days 14\n"
+    "grace_period_attribute mfaGracePeriodDays\n"
+    "grace_message Contact IT helpdesk at ext. 5555 for MFA setup\n"
+    "show_grace_message true\n";
+
+  char *config_file = create_temp_config(config);
+  ck_assert_ptr_nonnull(config_file);
+
+  pam_config_t cfg;
+  int result = parse_config(config_file, &cfg);
+
+  ck_assert_int_eq(result, 0);
+  ck_assert_int_eq(cfg.grace_period_days, 14);
+  ck_assert_str_eq(cfg.grace_period_attribute, "mfaGracePeriodDays");
+  ck_assert_str_eq(cfg.grace_message, "Contact IT helpdesk at ext. 5555 for MFA setup");
+  ck_assert_int_eq(cfg.show_grace_message, 1);
+
+  free_config(&cfg);
+  unlink(config_file);
+  free(config_file);
+}
+END_TEST
+
+/* Test 21: Grace message with URL */
+START_TEST(test_grace_message_with_url)
+{
+  const char *config =
+    "ldap_uri ldap://localhost\n"
+    "ldap_base dc=example,dc=com\n"
+    "grace_message Please visit https://auth.example.com/manage_mfa to complete enrollment\n";
+
+  char *config_file = create_temp_config(config);
+  ck_assert_ptr_nonnull(config_file);
+
+  pam_config_t cfg;
+  int result = parse_config(config_file, &cfg);
+
+  ck_assert_int_eq(result, 0);
+  ck_assert_str_eq(cfg.grace_message, "Please visit https://auth.example.com/manage_mfa to complete enrollment");
+
+  free_config(&cfg);
+  unlink(config_file);
+  free(config_file);
+}
+END_TEST
+
+/* Test 22: Empty grace message (should use empty string, not default) */
+START_TEST(test_empty_grace_message)
+{
+  const char *config =
+    "ldap_uri ldap://localhost\n"
+    "ldap_base dc=example,dc=com\n"
+    "grace_message\n";  /* Empty value */
+
+  char *config_file = create_temp_config(config);
+  ck_assert_ptr_nonnull(config_file);
+
+  pam_config_t cfg;
+  int result = parse_config(config_file, &cfg);
+
+  ck_assert_int_eq(result, 0);
+  ck_assert_ptr_nonnull(cfg.grace_message);
+  ck_assert_str_eq(cfg.grace_message, "");
+
+  free_config(&cfg);
+  unlink(config_file);
+  free(config_file);
+}
+END_TEST
+
 /* Test Suite Setup */
 Suite *config_suite(void) {
   Suite *s;
@@ -432,6 +607,13 @@ Suite *config_suite(void) {
   tcase_add_test(tc_core, test_default_values);
   tcase_add_test(tc_core, test_required_settings);
   tcase_add_test(tc_core, test_parse_boolean_values);
+  tcase_add_test(tc_core, test_parse_grace_message);
+  tcase_add_test(tc_core, test_parse_grace_period_attribute);
+  tcase_add_test(tc_core, test_parse_show_grace_message);
+  tcase_add_test(tc_core, test_grace_period_defaults);
+  tcase_add_test(tc_core, test_parse_complete_grace_config);
+  tcase_add_test(tc_core, test_grace_message_with_url);
+  tcase_add_test(tc_core, test_empty_grace_message);
   suite_add_tcase(s, tc_core);
 
   /* Security test case */

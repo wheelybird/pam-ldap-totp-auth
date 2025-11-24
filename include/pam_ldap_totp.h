@@ -8,6 +8,12 @@
 #ifndef PAM_LDAP_TOTP_H
 #define PAM_LDAP_TOTP_H
 
+/* Version information */
+#define PAM_LDAP_TOTP_VERSION "1.0.0"
+#define PAM_LDAP_TOTP_VERSION_MAJOR 1
+#define PAM_LDAP_TOTP_VERSION_MINOR 0
+#define PAM_LDAP_TOTP_VERSION_PATCH 0
+
 #include <security/pam_modules.h>
 #include <security/pam_ext.h>
 #include <ldap.h>
@@ -40,7 +46,6 @@ typedef struct {
   char *status_attribute;      /* LDAP attribute for TOTP status */
   char *enrolled_date_attribute; /* LDAP attribute for enrollment date */
   char *totp_prefix;           /* Prefix for TOTP data in attribute */
-  char *scratch_prefix;        /* Prefix for scratch codes */
   int time_step;               /* TOTP time step in seconds (default: 30) */
   int window_size;             /* Time window tolerance (default: 3) */
 
@@ -49,6 +54,11 @@ typedef struct {
   char *enforcement_mode;      /* Enforcement: strict, graceful, warn_only */
   char *setup_service_dn;      /* Service DN allowed during setup */
   int require_unique_match;    /* Require unique LDAP match (default: 0) */
+
+  /* MFA enrollment */
+  char *grace_message;         /* Custom message shown during grace period */
+  int show_grace_message;      /* Show grace period reminder (default: 1) */
+  char *grace_period_attribute; /* LDAP attribute for user-specific grace period */
 
   /* Debug */
   int debug;                   /* Enable debug logging */

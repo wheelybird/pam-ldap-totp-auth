@@ -15,7 +15,10 @@ A complete PAM (Pluggable Authentication Modules) module that provides **unified
 - **RFC 6238 compliant** - Standard TOTP implementation with SHA1
 - **Backup codes** - Emergency access with scratch codes (single-use)
 - **Clock drift tolerance** - Configurable time window for TOTP validation
-- **Grace period support** - Allow users time to enroll in MFA
+- **Grace period support** - Allow users time to enroll in MFA with informational messaging
+  - Per-user grace periods from LDAP or global config default
+  - Displays days remaining and custom enrollment message
+  - Configurable message for directing users to enrollment resources
 
 
 ### Authentication flow
@@ -113,21 +116,105 @@ login_attribute mail
 
 The module will search for users using `(mail=username)` instead of `(uid=username)`. This is useful for environments where users authenticate with email addresses.  See "Multiple match handling" below for how this handles multiple matches for that attribute.
 
-## Building
+## Installation
+
+### Quick Start
+
+```bash
+# 1. Install dependencies
+sudo apt-get install build-essential libpam0g-dev libldap2-dev liboath-dev
+
+# 2. Clone repository
+git clone https://github.com/wheelybird/pam-ldap-totp-auth.git
+cd pam-ldap-totp-auth
+
+# 3. Build and install
+make
+sudo make install
+
+# 4. Configure
+sudo cp pam_ldap_totp_auth.conf.example /etc/security/pam_ldap_totp_auth.conf
+sudo chmod 600 /etc/security/pam_ldap_totp_auth.conf
+sudo nano /etc/security/pam_ldap_totp_auth.conf  # Edit with your LDAP settings
+```
+
+### Detailed Installation Steps
+
+#### 1. Install Build Dependencies
+
+**Debian/Ubuntu:**
+```bash
+sudo apt-get update
+sudo apt-get install build-essential libpam0g-dev libldap2-dev liboath-dev
+```
+
+**RHEL/CentOS/Fedora:**
+```bash
+sudo yum install gcc pam-devel openldap-devel liboath-devel
+```
+
+**Alpine:**
+```bash
+sudo apk add build-base pam-dev openldap-dev oath-toolkit-dev
+```
+
+#### 2. Download Source
+
+**Option A: Clone from Git (recommended)**
+```bash
+git clone https://github.com/wheelybird/pam-ldap-totp-auth.git
+cd pam-ldap-totp-auth
+```
+
+**Option B: Download Release Tarball**
+```bash
+wget https://github.com/wheelybird/pam-ldap-totp-auth/archive/v1.0.0.tar.gz
+tar xzf v1.0.0.tar.gz
+cd pam-ldap-totp-auth-1.0.0
+```
+
+#### 3. Build
 
 ```bash
 make
 ```
 
-This will compile `pam_ldap_totp_auth.so` in the current directory.
+This compiles `pam_ldap_totp_auth.so` in the current directory.
 
-## Installation
+**Verify build:**
+```bash
+ls -lh pam_ldap_totp_auth.so
+file pam_ldap_totp_auth.so
+# Should show: ELF 64-bit LSB shared object
+```
+
+#### 4. Install
 
 ```bash
 sudo make install
 ```
 
-This installs the module to `/lib/security/pam_ldap_totp_auth.so` (or `/lib64/security/` on 64-bit systems).
+This installs the module to:
+- `/lib/security/pam_ldap_totp_auth.so` (32-bit systems)
+- `/lib64/security/pam_ldap_totp_auth.so` (64-bit systems)
+
+**Verify installation:**
+```bash
+ls -l /lib*/security/pam_ldap_totp_auth.so
+```
+
+#### 5. Install LDAP Schema (Required)
+
+Install the TOTP LDAP schema before configuring the module:
+
+```bash
+# Clone schema repository
+git clone https://github.com/wheelybird/ldap-totp-schema.git
+
+# Follow installation instructions in ldap-totp-schema/README.md
+```
+
+See the [ldap-totp-schema](https://github.com/wheelybird/ldap-totp-schema) repository for schema installation.
 
 ## Configuration
 
@@ -167,6 +254,11 @@ window_size 3
 grace_period_days 7
 enforcement_mode graceful  # Options: graceful (default), warn_only, strict
 
+# Grace period messaging (challenge mode only)
+grace_period_attribute mfaGracePeriodDays  # LDAP attribute for user-specific grace periods
+grace_message Contact your administrator to set up MFA  # Message shown during grace period
+show_grace_message true  # Display grace period message to users
+
 # Multiple match handling (default: false, matches pam_ldap behavior)
 require_unique_match false
 
@@ -205,6 +297,7 @@ All LDAP attributes used by the module are configurable, allowing integration wi
 - `scratch_attribute` - LDAP attribute for backup/scratch codes (default: `totpScratchCode`)
 - `status_attribute` - LDAP attribute for enrollment status (default: `totpStatus`)
 - `enrolled_date_attribute` - LDAP attribute for enrollment date (default: `totpEnrolledDate`)
+- `grace_period_attribute` - LDAP attribute for per-user grace period in days (default: `mfaGracePeriodDays`)
 
 If you use the recommended [LDAP TOTP schema](https://github.com/wheelybird/ldap-totp-schema), the defaults will work out of the box.
 
@@ -486,11 +579,11 @@ TOTP relies on accurate system time:
 Always generate backup codes for emergency access:
 ```bash
 for i in {1..10}; do
-  printf "TOTP-SCRATCH:%08d\n" $((RANDOM * RANDOM % 100000000))
+  printf "%08d\n" $((RANDOM * RANDOM % 100000000))
 done
 ```
 
-Store with `totpScratchCode` attribute in LDAP.
+Store as plain 8-digit numbers with `totpScratchCode` attribute in LDAP.
 
 ### Configuration file permissions
 
@@ -549,11 +642,55 @@ This provides a total window of 210 seconds (7 time steps).
 
 ### Grace period
 
-The `grace_period_days` setting allows users time to set up MFA:
-- Check if user is in group with `mfaRequired=TRUE`
-- If `totpStatus=pending`, allow grace period
-- Calculate: `days_elapsed = (current_date - totpEnrolledDate) / 86400`
-- If `days_elapsed > grace_period_days`, enforce MFA
+The grace period feature allows users time to set up MFA while providing informational messaging about enrollment requirements.
+
+**Grace period enforcement:**
+- Users with `totpStatus=pending` are allowed to authenticate without TOTP during the grace period
+- Grace period length is determined by:
+  1. **User-specific period** - Read from LDAP attribute (`grace_period_attribute`, default: `mfaGracePeriodDays`)
+  2. **Global default** - Fallback to `grace_period_days` from config if LDAP attribute is not set
+- Calculation: `days_elapsed = (current_date - totpEnrolledDate) / 86400`
+- If `days_elapsed > grace_period_days`, MFA is enforced
+
+**Grace period messaging (challenge-response mode only):**
+
+When `show_grace_message` is enabled (default: `true`), users in grace period see an informational message showing:
+- Days remaining in grace period
+- Custom message for enrollment instructions (configurable via `grace_message`)
+
+**User experience example:**
+```
+Password: [user enters password]
+
+*** MFA ENROLLMENT REQUIRED ***
+You have 5 days remaining to set up multi-factor authentication.
+Please visit https://auth.example.com/manage_mfa
+
+[login proceeds normally]
+```
+
+**Configuration options:**
+- `grace_period_days` - Global default grace period (default: 7 days)
+- `grace_period_attribute` - LDAP attribute for per-user grace periods (default: `mfaGracePeriodDays`)
+- `grace_message` - Custom message shown to users (default: "Contact your administrator to set up MFA")
+- `show_grace_message` - Enable/disable messaging (default: `true`)
+
+**Per-user grace periods:**
+
+Administrators can set custom grace periods for specific users by adding the grace period attribute to their LDAP entry:
+
+```bash
+ldapmodify -x -D "cn=admin,dc=example,dc=com" -w password <<EOF
+dn: uid=jdoe,ou=people,dc=example,dc=com
+changetype: modify
+add: mfaGracePeriodDays
+mfaGracePeriodDays: 14
+EOF
+```
+
+If the user has `mfaGracePeriodDays: 14` in LDAP, this overrides the global `grace_period_days` setting for that user.
+
+**Note:** Grace period messaging only works in challenge-response mode. In append mode, the message is logged but not displayed to the user (since append mode doesn't support PAM conversation).
 
 ## Development
 
@@ -578,12 +715,13 @@ cd tests
 make run
 
 # Run individual test suites
-./tests/test_config   # Configuration parsing tests
-./tests/test_totp     # TOTP validation tests
-./tests/test_extract  # OTP extraction tests
+./tests/test_config         # Configuration parsing tests
+./tests/test_totp           # TOTP validation tests
+./tests/test_grace_period   # Grace period messaging tests
+./tests/test_extract        # OTP extraction tests
 ```
 
-See [tests/README.md](tests/README.md) for detailed test documentation.
+See [tests/TEST_SUMMARY.md](tests/TEST_SUMMARY.md) for detailed test documentation.
 
 ### Integration Testing with pamtester
 

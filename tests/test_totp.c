@@ -16,7 +16,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
-#include <oath.h>
+#include <liboath/oath.h>
 #include "../include/pam_ldap_totp.h"
 
 /* Test helper: create minimal config */
@@ -25,6 +25,38 @@ static void create_test_config(pam_config_t *cfg) {
   cfg->time_step = 30;
   cfg->window_size = 3;
   cfg->debug = 0;
+}
+
+/* Test helper: generate TOTP code from Base32 secret */
+static int generate_totp_from_base32(const char *base32_secret, uint64_t time_value,
+                                       int time_step, char *code_out) {
+  char *decoded_secret = NULL;
+  size_t decoded_len = 0;
+  int rc;
+
+  /* Initialize OATH library */
+  rc = oath_init();
+  if (rc != OATH_OK) {
+    return -1;
+  }
+
+  /* Decode Base32 secret */
+  rc = oath_base32_decode(base32_secret, strlen(base32_secret),
+                          &decoded_secret, &decoded_len);
+  if (rc != OATH_OK) {
+    oath_done();
+    return -1;
+  }
+
+  /* Generate TOTP code */
+  rc = oath_totp_generate(decoded_secret, decoded_len,
+                          time_value * time_step, time_step, 0, 6, code_out);
+
+  /* Cleanup */
+  free(decoded_secret);
+  oath_done();
+
+  return (rc == OATH_OK) ? 0 : -1;
 }
 
 /* Test 1: Valid TOTP code validation */
@@ -39,11 +71,11 @@ START_TEST(test_validate_totp_code_valid)
   /* Generate current TOTP code */
   char code[7];
   time_t now = time(NULL);
-  unsigned long T = now / cfg.time_step;
+  uint64_t T = now / cfg.time_step;
 
-  /* Use liboath to generate expected code */
-  oath_totp_generate(secret, strlen(secret),
-                     T, cfg.time_step, 0, 6, code);
+  /* Use helper to generate expected code from Base32 */
+  int rc = generate_totp_from_base32(secret, T, cfg.time_step, code);
+  ck_assert_int_eq(rc, 0);
 
   /* Validate the generated code */
   int result = validate_totp_code(NULL, secret, code, &cfg);
@@ -79,10 +111,10 @@ START_TEST(test_validate_totp_time_window)
   /* Generate code for previous time step */
   char code[7];
   time_t now = time(NULL);
-  unsigned long T = (now / cfg.time_step) - 1;  /* Previous step */
+  uint64_t T = (now / cfg.time_step) - 1;  /* Previous step */
 
-  oath_totp_generate(secret, strlen(secret),
-                     T, cfg.time_step, 0, 6, code);
+  int rc = generate_totp_from_base32(secret, T, cfg.time_step, code);
+  ck_assert_int_eq(rc, 0);
 
   /* Should still validate within window */
   int result = validate_totp_code(NULL, secret, code, &cfg);
@@ -103,10 +135,10 @@ START_TEST(test_validate_totp_outside_window)
   /* Generate code for time step outside window */
   char code[7];
   time_t now = time(NULL);
-  unsigned long T = (now / cfg.time_step) - 10;  /* 10 steps back = 300 seconds */
+  uint64_t T = (now / cfg.time_step) - 10;  /* 10 steps back = 300 seconds */
 
-  oath_totp_generate(secret, strlen(secret),
-                     T, cfg.time_step, 0, 6, code);
+  int rc = generate_totp_from_base32(secret, T, cfg.time_step, code);
+  ck_assert_int_eq(rc, 0);
 
   /* Should reject - too old */
   int result = validate_totp_code(NULL, secret, code, &cfg);
@@ -219,19 +251,19 @@ START_TEST(test_rfc6238_test_vectors)
    * Expected code: 287082 */
 
   char code_t1[7];
-  oath_totp_generate(secret, strlen(secret),
-                     1, 30, 0, 6, code_t1);
+  int rc1 = generate_totp_from_base32(secret, 1, 30, code_t1);
+  ck_assert_int_eq(rc1, 0);
 
   /* Note: We can't easily test at specific timestamps without mocking time,
    * but we can verify the validation logic works with current time */
 
   /* Generate code for current time and verify it validates */
   time_t now = time(NULL);
-  unsigned long T = now / 30;
+  uint64_t T = now / 30;
   char code_now[7];
 
-  oath_totp_generate(secret, strlen(secret),
-                     T, 30, 0, 6, code_now);
+  int rc2 = generate_totp_from_base32(secret, T, 30, code_now);
+  ck_assert_int_eq(rc2, 0);
 
   int result = validate_totp_code(NULL, secret, code_now, &cfg);
   ck_assert_int_eq(result, 1);
@@ -251,10 +283,10 @@ START_TEST(test_different_time_steps)
 
   char code[7];
   time_t now = time(NULL);
-  unsigned long T = now / cfg.time_step;
+  uint64_t T = now / cfg.time_step;
 
-  oath_totp_generate(secret, strlen(secret),
-                     T, cfg.time_step, 0, 6, code);
+  int rc = generate_totp_from_base32(secret, T, cfg.time_step, code);
+  ck_assert_int_eq(rc, 0);
 
   int result = validate_totp_code(NULL, secret, code, &cfg);
   ck_assert_int_eq(result, 1);
@@ -273,10 +305,10 @@ START_TEST(test_zero_window_size)
   /* Generate code for current time */
   char code[7];
   time_t now = time(NULL);
-  unsigned long T = now / cfg.time_step;
+  uint64_t T = now / cfg.time_step;
 
-  oath_totp_generate(secret, strlen(secret),
-                     T, cfg.time_step, 0, 6, code);
+  int rc = generate_totp_from_base32(secret, T, cfg.time_step, code);
+  ck_assert_int_eq(rc, 0);
 
   /* Should validate current code */
   int result = validate_totp_code(NULL, secret, code, &cfg);
@@ -284,8 +316,8 @@ START_TEST(test_zero_window_size)
 
   /* Generate code for previous time step */
   char code_prev[7];
-  oath_totp_generate(secret, strlen(secret),
-                     T - 1, cfg.time_step, 0, 6, code_prev);
+  int rc_prev = generate_totp_from_base32(secret, T - 1, cfg.time_step, code_prev);
+  ck_assert_int_eq(rc_prev, 0);
 
   /* Should reject - no window */
   int result_prev = validate_totp_code(NULL, secret, code_prev, &cfg);

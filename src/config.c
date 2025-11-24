@@ -94,7 +94,6 @@ static void init_config_defaults(pam_config_t *config) {
   config->status_attribute = strdup("totpStatus");
   config->enrolled_date_attribute = strdup("totpEnrolledDate");
   config->totp_prefix = strdup("");
-  config->scratch_prefix = strdup("TOTP-SCRATCH:");
   config->time_step = 30;
   config->window_size = 3;
 
@@ -102,6 +101,11 @@ static void init_config_defaults(pam_config_t *config) {
   config->grace_period_days = 7;
   config->enforcement_mode = strdup("graceful");
   config->require_unique_match = 0;  /* Match pam_ldap behaviour */
+
+  /* MFA enrollment defaults */
+  config->grace_message = strdup("Contact your administrator to set up MFA");
+  config->show_grace_message = 1;    /* Show message by default */
+  config->grace_period_attribute = strdup("mfaGracePeriodDays");
 
   /* Debug */
   config->debug = 0;
@@ -205,10 +209,6 @@ static void parse_config_line(char *line, pam_config_t *config) {
     if (config->totp_prefix) free(config->totp_prefix);
     config->totp_prefix = strdup(value);
   }
-  else if (strcmp(key, "scratch_prefix") == 0) {
-    if (config->scratch_prefix) free(config->scratch_prefix);
-    config->scratch_prefix = strdup(value);
-  }
   else if (strcmp(key, "time_step") == 0) {
     config->time_step = atoi(value);
   }
@@ -226,6 +226,19 @@ static void parse_config_line(char *line, pam_config_t *config) {
   }
   else if (strcmp(key, "require_unique_match") == 0) {
     config->require_unique_match = parse_boolean(value);
+  }
+
+  /* Parse MFA enrollment settings */
+  else if (strcmp(key, "grace_message") == 0) {
+    if (config->grace_message) free(config->grace_message);
+    config->grace_message = strdup(value);
+  }
+  else if (strcmp(key, "show_grace_message") == 0) {
+    config->show_grace_message = parse_boolean(value);
+  }
+  else if (strcmp(key, "grace_period_attribute") == 0) {
+    if (config->grace_period_attribute) free(config->grace_period_attribute);
+    config->grace_period_attribute = strdup(value);
   }
 
   /* Parse debug settings */
@@ -310,11 +323,14 @@ void free_config(pam_config_t *config) {
   if (config->status_attribute) free(config->status_attribute);
   if (config->enrolled_date_attribute) free(config->enrolled_date_attribute);
   if (config->totp_prefix) free(config->totp_prefix);
-  if (config->scratch_prefix) free(config->scratch_prefix);
 
   /* Free MFA enforcement settings */
   if (config->enforcement_mode) free(config->enforcement_mode);
   if (config->setup_service_dn) free(config->setup_service_dn);
+
+  /* Free MFA enrollment settings */
+  if (config->grace_message) free(config->grace_message);
+  if (config->grace_period_attribute) free(config->grace_period_attribute);
 
   /* Free challenge-response settings */
   if (config->challenge_prompt) free(config->challenge_prompt);
