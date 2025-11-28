@@ -168,9 +168,9 @@ cd pam-ldap-totp-auth
 
 **Option B: Download Release Tarball**
 ```bash
-wget https://github.com/wheelybird/pam-ldap-totp-auth/archive/v1.0.0.tar.gz
-tar xzf v1.0.0.tar.gz
-cd pam-ldap-totp-auth-1.0.0
+wget https://github.com/wheelybird/pam-ldap-totp-auth/archive/v0.1.3.tar.gz
+tar xzf v0.1.3.tar.gz
+cd pam-ldap-totp-auth-0.1.3
 ```
 
 #### 3. Build
