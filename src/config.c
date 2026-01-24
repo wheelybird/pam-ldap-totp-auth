@@ -81,6 +81,7 @@ static void init_config_defaults(pam_config_t *config) {
   config->ldap_bind_dn = NULL;       /* Optional - anonymous bind */
   config->ldap_bind_password = NULL; /* Optional */
   config->login_attribute = strdup("uid");
+  config->ldap_filter = strdup("");  /* Optional - empty = disabled */
   config->tls_mode = strdup("starttls"); /* Secure by default */
   config->tls_verify_cert = 1;       /* Verify certificates by default */
   config->tls_ca_cert_file = strdup("/etc/ssl/certs/ca-certificates.crt");
@@ -165,6 +166,15 @@ static void parse_config_line(char *line, pam_config_t *config) {
   else if (strcmp(key, "login_attribute") == 0) {
     if (config->login_attribute) free(config->login_attribute);
     config->login_attribute = strdup(value);
+  }
+  else if (strcmp(key, "ldap_filter") == 0) {
+    /* Validate filter before accepting it */
+    if (!validate_ldap_filter(value)) {
+      syslog(LOG_ERR, "Invalid LDAP filter in configuration - ignoring");
+      return;
+    }
+    if (config->ldap_filter) free(config->ldap_filter);
+    config->ldap_filter = strdup(value);
   }
   else if (strcmp(key, "tls_mode") == 0) {
     if (config->tls_mode) free(config->tls_mode);
@@ -314,6 +324,7 @@ void free_config(pam_config_t *config) {
   }
 
   if (config->login_attribute) free(config->login_attribute);
+  if (config->ldap_filter) free(config->ldap_filter);
   if (config->tls_mode) free(config->tls_mode);
   if (config->tls_ca_cert_file) free(config->tls_ca_cert_file);
 

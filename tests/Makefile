@@ -12,7 +12,7 @@ SRC_DIR = ../src
 OBJDIR = obj
 
 # Test executables
-TESTS = test_config test_ldap_auth test_totp test_security test_challenge_response test_grace_period
+TESTS = test_config test_ldap_auth test_totp test_security test_challenge_response test_grace_period test_ldap_filter
 
 .PHONY: all clean run check
 
@@ -55,6 +55,9 @@ test_challenge_response: test_challenge_response.c $(OBJDIR)/config.o $(OBJDIR)/
 	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
 
 test_grace_period: test_grace_period.c $(OBJDIR)/config.o $(OBJDIR)/security_utils.o
+	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
+
+test_ldap_filter: test_ldap_filter.c $(OBJDIR)/config.o $(OBJDIR)/security_utils.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
 
 # Run all tests

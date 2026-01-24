@@ -56,6 +56,29 @@ Tests the grace period messaging functionality:
 - Configuration option parsing and defaults
 - Custom grace messages with URLs and contact information
 
+### test_ldap_filter.c - LDAP filter tests (NEW in v0.2.0)
+
+Tests the `ldap_filter` configuration parameter for group-based and attribute-based access control:
+
+- Filter validation (syntax, structure, balanced parentheses)
+- Length limits (512 byte maximum)
+- Control character rejection
+- Configuration parsing (valid, invalid, empty, missing)
+- Memory cleanup (free_config)
+- Complex filters (OR, AND, NOT, nested)
+- Special characters in filter values
+- Parentheses depth tracking
+- Backward compatibility (empty filter)
+
+**Key scenarios tested:**
+- Valid filters: memberOf, accountStatus, OR, AND, NOT, wildcards
+- Invalid filters: unbalanced parens, missing parens, control chars, over-length
+- Configuration parsing: valid filter, empty filter, no filter line, invalid filter rejected
+- Edge cases: tab allowed, DEL rejected, deeply nested parens, LDAP escape sequences
+- RFC 4515 LDAP filter syntax compliance
+
+**Test coverage:** 19 tests across 3 test cases (validation, config parsing, edge cases)
+
 ### test_totp.c - TOTP validation tests
 
 Tests the TOTP code validation logic:
@@ -303,6 +326,58 @@ docker compose down
 ```
 
 See `ssh-test/README.md` for detailed SSH testing documentation.
+
+## Integration Testing - LDAP Filter (NEW in v0.2.0)
+
+Test the `ldap_filter` functionality with a real LDAP server:
+
+```bash
+# Prerequisites:
+# - LDAP server running (e.g., Docker OpenLDAP from /home/brian/git/wheelybird/docker/openldap)
+# - Test users and groups configured
+# - memberOf overlay enabled
+
+# Run integration tests
+cd /home/brian/git/wheelybird/pam-ldap-totp-auth/tests
+./test-ldap-filter-integration.sh
+
+# With custom LDAP connection
+LDAP_URI=ldap://ldapserver LDAP_BASE=dc=example,dc=com ./test-ldap-filter-integration.sh
+```
+
+**Tests performed:**
+- Simple username filter (baseline)
+- Combined filter (username + memberOf)
+- User not in group (should fail)
+- OR filter (multiple groups)
+- Nested AND filters
+- NOT filters
+- Wildcard filters
+- memberOf overlay verification
+- Invalid filter syntax rejection
+
+**Expected output:**
+```
+========================================
+LDAP Filter Integration Tests
+========================================
+...
+Tests run:    12
+Tests passed: 12
+Tests failed: 0
+
+=========================================
+All integration tests passed!
+=========================================
+```
+
+See `TEST_LDAP_FILTER.md` for comprehensive filter testing documentation including:
+- Unit test coverage
+- Integration test scenarios
+- Manual testing procedures
+- Performance testing
+- Security testing
+- Troubleshooting guide
 
 ## Continuous Integration
 
