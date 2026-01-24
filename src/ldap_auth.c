@@ -28,7 +28,7 @@
 int ldap_validate_password(pam_handle_t *pamh, LDAP *ld, const char *username,
                            const char *password, pam_config_t *config) {
   int rc;
-  char filter[512];
+  char filter[1024];
   char *attrs[] = { LDAP_NO_ATTRS, NULL }; /* Only need DN, not attributes */
   LDAPMessage *result = NULL;
   LDAPMessage *entry;
@@ -58,7 +58,14 @@ int ldap_validate_password(pam_handle_t *pamh, LDAP *ld, const char *username,
 
   /* Build search filter */
   const char *login_attr = config->login_attribute ? config->login_attribute : "uid";
-  rc = snprintf(filter, sizeof(filter), "(%s=%s)", login_attr, escaped_username);
+
+  /* Combine username filter with additional filter if configured */
+  if (config->ldap_filter && config->ldap_filter[0] != '\0') {
+    rc = snprintf(filter, sizeof(filter), "(&(%s=%s)%s)",
+                  login_attr, escaped_username, config->ldap_filter);
+  } else {
+    rc = snprintf(filter, sizeof(filter), "(%s=%s)", login_attr, escaped_username);
+  }
   free(escaped_username);
 
   if (rc >= (int)sizeof(filter)) {

@@ -9,10 +9,10 @@
 #define PAM_LDAP_TOTP_H
 
 /* Version information */
-#define PAM_LDAP_TOTP_VERSION "0.1.3"
+#define PAM_LDAP_TOTP_VERSION "0.2.0"
 #define PAM_LDAP_TOTP_VERSION_MAJOR 0
-#define PAM_LDAP_TOTP_VERSION_MINOR 1
-#define PAM_LDAP_TOTP_VERSION_PATCH 3
+#define PAM_LDAP_TOTP_VERSION_MINOR 2
+#define PAM_LDAP_TOTP_VERSION_PATCH 0
 
 #include <security/pam_modules.h>
 #include <security/pam_ext.h>
@@ -33,6 +33,7 @@ typedef struct {
   char *ldap_bind_dn;          /* Service account DN for LDAP bind (optional) */
   char *ldap_bind_password;    /* Service account password (optional) */
   char *login_attribute;       /* LDAP attribute for user login (default: uid) */
+  char *ldap_filter;           /* Additional LDAP filter for access control (optional) */
   char *tls_mode;              /* TLS mode: none, starttls, ldaps (default: starttls) */
   int tls_verify_cert;         /* Verify TLS certificates (default: 1) */
   char *tls_ca_cert_file;      /* Path to CA certificate file */
@@ -115,6 +116,7 @@ int is_safe_username(const char *username);
 int is_valid_ldap_attribute(const char *attr);
 int is_valid_date(int year, int month, int day, int hour, int min, int sec);
 char *safe_strdup(const char *s);
+int validate_ldap_filter(const char *filter);
 
 /* Utility macros */
 #define PAM_CONFIG_FILE "/etc/security/pam_ldap_totp_auth.conf"

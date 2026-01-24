@@ -268,3 +268,79 @@ char *safe_strdup(const char *s) {
 
   return result;
 }
+
+/*
+ * Validate LDAP filter syntax
+ *
+ * Performs load-time validation of LDAP filter configuration:
+ * - Checks for balanced parentheses
+ * - Rejects control characters (except tab)
+ * - Ensures filter starts and ends with parentheses
+ * - Enforces maximum length (512 bytes)
+ *
+ * Note: This is basic structural validation. The LDAP library will
+ * perform full RFC 4515 validation when the filter is used.
+ *
+ * Returns: 1 if valid, 0 if invalid
+ */
+int validate_ldap_filter(const char *filter) {
+  size_t len;
+  int paren_depth = 0;
+  size_t i;
+
+  /* Empty filter is valid (feature disabled) */
+  if (!filter || filter[0] == '\0') {
+    return 1;
+  }
+
+  /* Check length limit (512 bytes) */
+  len = strlen(filter);
+  if (len > 512) {
+    syslog(LOG_ERR, "LDAP filter too long (%zu bytes, max 512)", len);
+    return 0;
+  }
+
+  /* Filter must start and end with parentheses */
+  if (filter[0] != '(' || filter[len - 1] != ')') {
+    syslog(LOG_ERR, "LDAP filter must start and end with parentheses");
+    return 0;
+  }
+
+  /* Check for balanced parentheses and reject control characters */
+  for (i = 0; i < len; i++) {
+    unsigned char c = (unsigned char)filter[i];
+
+    /* Track parentheses depth */
+    if (c == '(') {
+      paren_depth++;
+    } else if (c == ')') {
+      paren_depth--;
+      /* More closing than opening parentheses */
+      if (paren_depth < 0) {
+        syslog(LOG_ERR, "LDAP filter has unbalanced parentheses (too many closing)");
+        return 0;
+      }
+    }
+
+    /* Reject control characters except tab (0x09) */
+    if (c < 0x20 && c != 0x09) {
+      syslog(LOG_ERR, "LDAP filter contains invalid control character at position %zu", i);
+      return 0;
+    }
+
+    /* Reject DEL character (0x7F) */
+    if (c == 0x7F) {
+      syslog(LOG_ERR, "LDAP filter contains DEL character at position %zu", i);
+      return 0;
+    }
+  }
+
+  /* Check final parentheses balance */
+  if (paren_depth != 0) {
+    syslog(LOG_ERR, "LDAP filter has unbalanced parentheses (depth: %d)", paren_depth);
+    return 0;
+  }
+
+  /* Basic validation passed */
+  return 1;
+}

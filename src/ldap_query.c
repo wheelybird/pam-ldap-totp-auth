@@ -104,7 +104,7 @@ void pam_ldap_disconnect(LDAP *ld) {
 char *ldap_get_totp_secret(pam_handle_t *pamh, LDAP *ld, const char *username,
                             pam_config_t *config) {
   int rc;
-  char filter[256];
+  char filter[1024];
   char *attrs[] = { config->totp_attribute, NULL };
   LDAPMessage *result = NULL;
   LDAPMessage *entry;
@@ -124,8 +124,20 @@ char *ldap_get_totp_secret(pam_handle_t *pamh, LDAP *ld, const char *username,
   DEBUG_LOG(config, "Using login attribute: %s (login_attribute=%s)",
             search_attr, config->login_attribute ? config->login_attribute : "(null)");
 
-  snprintf(filter, sizeof(filter), "(%s=%s)", search_attr, escaped_username);
+  /* Combine username filter with additional filter if configured */
+  if (config->ldap_filter && config->ldap_filter[0] != '\0') {
+    rc = snprintf(filter, sizeof(filter), "(&(%s=%s)%s)",
+                  search_attr, escaped_username, config->ldap_filter);
+  } else {
+    rc = snprintf(filter, sizeof(filter), "(%s=%s)", search_attr, escaped_username);
+  }
   free(escaped_username);
+
+  /* Check for buffer overflow */
+  if (rc >= (int)sizeof(filter)) {
+    pam_syslog(pamh, LOG_ERR, "LDAP filter too long for user '%s'", username);
+    return NULL;
+  }
 
   DEBUG_LOG(config, "LDAP search: base='%s' filter='%s' attr='%s'",
             config->ldap_base, filter, config->totp_attribute);
@@ -237,7 +249,7 @@ char *ldap_get_totp_secret(pam_handle_t *pamh, LDAP *ld, const char *username,
 int ldap_check_scratch_code(pam_handle_t *pamh, LDAP *ld, const char *username,
                               const char *code, pam_config_t *config) {
   int rc;
-  char filter[256];
+  char filter[1024];
   char *attrs[] = { config->scratch_attribute, NULL };
   LDAPMessage *result = NULL;
   LDAPMessage *entry;
@@ -253,8 +265,21 @@ int ldap_check_scratch_code(pam_handle_t *pamh, LDAP *ld, const char *username,
   }
 
   const char *search_attr = config->login_attribute ? config->login_attribute : "uid";
-  snprintf(filter, sizeof(filter), "(%s=%s)", search_attr, escaped_username);
+
+  /* Combine username filter with additional filter if configured */
+  if (config->ldap_filter && config->ldap_filter[0] != '\0') {
+    rc = snprintf(filter, sizeof(filter), "(&(%s=%s)%s)",
+                  search_attr, escaped_username, config->ldap_filter);
+  } else {
+    rc = snprintf(filter, sizeof(filter), "(%s=%s)", search_attr, escaped_username);
+  }
   free(escaped_username);
+
+  /* Check for buffer overflow */
+  if (rc >= (int)sizeof(filter)) {
+    pam_syslog(pamh, LOG_ERR, "LDAP filter too long for user '%s'", username);
+    return 0;
+  }
 
   DEBUG_LOG(config, "Scratch code search filter: %s", filter);
 
@@ -355,7 +380,7 @@ int ldap_check_scratch_code(pam_handle_t *pamh, LDAP *ld, const char *username,
 char *ldap_get_attribute(pam_handle_t *pamh, LDAP *ld, const char *username,
                           const char *attribute, pam_config_t *config) {
   int rc;
-  char filter[256];
+  char filter[1024];
   char *attrs[] = { (char *)attribute, NULL };
   LDAPMessage *result = NULL;
   LDAPMessage *entry;
@@ -371,8 +396,21 @@ char *ldap_get_attribute(pam_handle_t *pamh, LDAP *ld, const char *username,
   }
 
   const char *search_attr = config->login_attribute ? config->login_attribute : "uid";
-  snprintf(filter, sizeof(filter), "(%s=%s)", search_attr, escaped_username);
+
+  /* Combine username filter with additional filter if configured */
+  if (config->ldap_filter && config->ldap_filter[0] != '\0') {
+    rc = snprintf(filter, sizeof(filter), "(&(%s=%s)%s)",
+                  search_attr, escaped_username, config->ldap_filter);
+  } else {
+    rc = snprintf(filter, sizeof(filter), "(%s=%s)", search_attr, escaped_username);
+  }
   free(escaped_username);
+
+  /* Check for buffer overflow */
+  if (rc >= (int)sizeof(filter)) {
+    pam_syslog(pamh, LOG_ERR, "LDAP filter too long for user '%s'", username);
+    return NULL;
+  }
 
   /* Search for user */
   rc = ldap_search_ext_s(ld, config->ldap_base, LDAP_SCOPE_SUBTREE,

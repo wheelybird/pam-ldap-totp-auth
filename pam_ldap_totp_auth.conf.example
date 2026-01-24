@@ -59,6 +59,54 @@ ldap_bind_password
 # Default: uid
 login_attribute uid
 
+# LDAP filter for additional access control
+# Optional LDAP filter combined with username search to restrict access
+# The filter is combined with the username filter using AND logic:
+#   (&(login_attribute=username)(configured-filter))
+#
+# Common use cases:
+#   1. Group membership (requires memberOf overlay):
+#      ldap_filter (memberOf=cn=vpn-users,ou=groups,dc=example,dc=com)
+#
+#   2. Account status:
+#      ldap_filter (accountStatus=active)
+#
+#   3. Multiple conditions with OR:
+#      ldap_filter (|(memberOf=cn=vpn-users,ou=groups,dc=example,dc=com)(memberOf=cn=ssh-users,ou=groups,dc=example,dc=com))
+#
+#   4. Complex filters:
+#      ldap_filter (&(accountStatus=active)(!(accountLocked=TRUE)))
+#
+# IMPORTANT NOTES:
+#   - Filter must be valid RFC 4515 LDAP filter syntax
+#   - Filter must start and end with parentheses
+#   - Maximum length: 512 bytes
+#   - Empty value = feature disabled (default, backward compatible)
+#   - Username is always validated first (cannot be bypassed)
+#   - Use indexed LDAP attributes for best performance
+#   - Test filters with ldapsearch before deployment:
+#     ldapsearch -x -H ldap://server -b dc=example,dc=com \
+#       "(&(uid=testuser)(memberOf=cn=vpn-users,ou=groups,dc=example,dc=com))"
+#
+# Security considerations:
+#   - Filter is admin-configured and trusted (NOT user input)
+#   - Username is still escaped to prevent LDAP injection
+#   - Authentication fails closed on invalid filters
+#   - Ensure LDAP server supports required attributes (e.g., memberOf overlay)
+#
+# Performance considerations:
+#   - Index attributes used in the filter on your LDAP server
+#   - Complex filters may slow authentication
+#   - Test with realistic user load
+#
+# Examples by service:
+#   VPN:  ldap_filter (memberOf=cn=vpn-users,ou=groups,dc=example,dc=com)
+#   SSH:  ldap_filter (memberOf=cn=ssh-users,ou=groups,dc=example,dc=com)
+#   sudo: ldap_filter (memberOf=cn=sudoers,ou=groups,dc=example,dc=com)
+#
+# Default: empty (no additional filtering)
+ldap_filter
+
 # Require unique LDAP match
 # If true, authentication fails when multiple users match the login attribute
 # If false, first match is used (matches pam_ldap behaviour)
@@ -338,3 +386,17 @@ debug false
 #
 # Note: If user's LDAP entry has mfaGracePeriodDays=14, that value
 #       will be used instead of the global grace_period_days=7
+
+# Example 9: Group-based access control with LDAP filter
+# Only users in vpn-users group can authenticate via this service
+# ldap_uri ldap://ldap.example.com
+# ldap_base dc=example,dc=com
+# ldap_bind_dn cn=pam-auth,ou=services,dc=example,dc=com
+# ldap_bind_password SecurePassword123
+# ldap_filter (memberOf=cn=vpn-users,ou=groups,dc=example,dc=com)
+# totp_enabled true
+# tls_mode starttls
+# Behaviour:
+#   - Users in vpn-users group: authenticate with password+TOTP
+#   - Users NOT in vpn-users group: authentication fails with "User not found"
+# Note: Requires memberOf overlay on LDAP server
