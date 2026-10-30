@@ -24,4 +24,4 @@ RUN make clean && make
 RUN cd tests && make clean && make
 
 # Run all tests
-CMD ["tests/run-all-tests.sh"]
+CMD ["make", "-C", "tests", "run"]

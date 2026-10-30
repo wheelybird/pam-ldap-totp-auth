@@ -57,12 +57,16 @@ START_TEST(test_username_validation)
   ck_assert_int_eq(is_safe_username("john.doe"), 1);
   ck_assert_int_eq(is_safe_username("user_name"), 1);
   ck_assert_int_eq(is_safe_username("user-name"), 1);
+  ck_assert_int_eq(is_safe_username("user@example.com"), 1);
+  ck_assert_int_eq(is_safe_username("first.last+vpn@example.com"), 1);
 
   /* Invalid usernames */
   ck_assert_int_eq(is_safe_username(""), 0);           /* Empty */
   ck_assert_int_eq(is_safe_username(NULL), 0);         /* NULL */
   ck_assert_int_eq(is_safe_username("user;rm -rf"), 0); /* Command injection */
   ck_assert_int_eq(is_safe_username("user\n"), 0);     /* Newline */
+  ck_assert_int_eq(is_safe_username("user@../etc"), 0); /* Path traversal */
+  ck_assert_int_eq(is_safe_username("user@ex*ample"), 0); /* Filter wildcard */
 
   /* Note: Embedded null bytes ("\0") can't exist in C strings by definition.
    * PAM provides usernames as proper C strings, so this case is theoretical.
@@ -126,30 +130,44 @@ START_TEST(test_constant_time_comparison)
   const char *secret2 = "JBSWY3DPEHPK3PXP";
   const char *secret3 = "ABCDEFGHIJKLMNOP";
 
-  /* Measure time for matching strings */
-  struct timespec start, end;
-  clock_gettime(CLOCK_MONOTONIC, &start);
-  int result1 = constant_time_compare(secret1, secret2, strlen(secret1));
-  clock_gettime(CLOCK_MONOTONIC, &end);
-  long match_time = (end.tv_sec - start.tv_sec) * 1000000000L + (end.tv_nsec - start.tv_nsec);
+  ck_assert_int_eq(constant_time_compare(secret1, secret2, strlen(secret1)), 1);
+  ck_assert_int_eq(constant_time_compare(secret1, secret3, strlen(secret1)), 0);
 
-  /* Measure time for non-matching strings */
-  clock_gettime(CLOCK_MONOTONIC, &start);
-  int result2 = constant_time_compare(secret1, secret3, strlen(secret1));
-  clock_gettime(CLOCK_MONOTONIC, &end);
-  long nomatch_time = (end.tv_sec - start.tv_sec) * 1000000000L + (end.tv_nsec - start.tv_nsec);
+  /* An early-exit compare is far faster when the first byte differs than the last.
+   * Best-of-N over long buffers keeps scheduler noise out of a single ~100ns sample. */
+  enum { LEN = 4096, ITERATIONS = 2000, RUNS = 15 };
+  static char base[LEN], first_differs[LEN], last_differs[LEN];
+  memset(base, 'A', LEN);
+  memcpy(first_differs, base, LEN);
+  memcpy(last_differs, base, LEN);
+  first_differs[0] = 'B';
+  last_differs[LEN - 1] = 'B';
 
-  /* Verify results are correct */
-  ck_assert_int_eq(result1, 1);  /* Match */
-  ck_assert_int_eq(result2, 0);  /* No match */
+  long best_first = -1, best_last = -1;
+  for (int run = 0; run < RUNS; run++) {
+    struct timespec start, end;
+    long elapsed;
 
-  /* Timing difference should be minimal (< 10% variation) */
-  /* This is a rough check; precise timing attacks are complex */
-  long diff = labs(match_time - nomatch_time);
-  long max_time = match_time > nomatch_time ? match_time : nomatch_time;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    for (int i = 0; i < ITERATIONS; i++) {
+      ck_assert_int_eq(constant_time_compare(base, first_differs, LEN), 0);
+    }
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    elapsed = (end.tv_sec - start.tv_sec) * 1000000000L + (end.tv_nsec - start.tv_nsec);
+    if (best_first < 0 || elapsed < best_first) best_first = elapsed;
 
-  /* Allow up to 50% variation due to system scheduling */
-  ck_assert_int_lt(diff, max_time / 2);
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    for (int i = 0; i < ITERATIONS; i++) {
+      ck_assert_int_eq(constant_time_compare(base, last_differs, LEN), 0);
+    }
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    elapsed = (end.tv_sec - start.tv_sec) * 1000000000L + (end.tv_nsec - start.tv_nsec);
+    if (best_last < 0 || elapsed < best_last) best_last = elapsed;
+  }
+
+  long diff = labs(best_first - best_last);
+  long max_time = best_first > best_last ? best_first : best_last;
+  ck_assert_int_lt(diff, max_time / 4);
 }
 END_TEST
 
