@@ -346,3 +346,80 @@ int validate_ldap_filter(const char *filter) {
   /* Basic validation passed */
   return 1;
 }
+
+/*
+ * Build the user search filter. login_attribute may list several attributes
+ * ("uid,mail"); they are ORed, then ANDed with ldap_filter if one is set.
+ *
+ * Returns: 1 on success, 0 on invalid attribute, allocation failure or overflow
+ */
+int build_user_filter(char *buf, size_t size, const char *username,
+                      const pam_config_t *config) {
+  const char *attr_list = config->login_attribute ? config->login_attribute : "uid";
+  char terms[1024];
+  size_t terms_len = 0;
+  int count = 0;
+  int rc;
+  char *escaped, *attrs, *rest, *token;
+
+  escaped = ldap_escape_filter(username);
+  if (!escaped) {
+    return 0;
+  }
+
+  attrs = strdup(attr_list);
+  if (!attrs) {
+    free(escaped);
+    return 0;
+  }
+
+  terms[0] = '\0';
+  rest = attrs;
+  while ((token = strsep(&rest, ",")) != NULL) {
+    char *end;
+
+    while (isspace((unsigned char)*token)) token++;
+    end = token + strlen(token);
+    while (end > token && isspace((unsigned char)end[-1])) *--end = '\0';
+
+    if (!is_valid_ldap_attribute(token)) {
+      syslog(LOG_ERR, "Invalid attribute '%s' in login_attribute", token);
+      free(attrs);
+      free(escaped);
+      return 0;
+    }
+
+    rc = snprintf(terms + terms_len, sizeof(terms) - terms_len, "(%s=%s)", token, escaped);
+    if (rc < 0 || (size_t)rc >= sizeof(terms) - terms_len) {
+      free(attrs);
+      free(escaped);
+      return 0;
+    }
+    terms_len += rc;
+    count++;
+  }
+  free(attrs);
+  free(escaped);
+
+  const char *or_open = count > 1 ? "(|" : "";
+  const char *or_close = count > 1 ? ")" : "";
+
+  if (config->ldap_filter && config->ldap_filter[0] != '\0') {
+    rc = snprintf(buf, size, "(&%s%s%s%s)", or_open, terms, or_close, config->ldap_filter);
+  } else {
+    rc = snprintf(buf, size, "%s%s%s", or_open, terms, or_close);
+  }
+
+  return rc >= 0 && (size_t)rc < size;
+}
+
+/*
+ * With several login attributes, one user's uid can equal another's mail, so
+ * a multi-entry match is always rejected rather than taking the first entry.
+ *
+ * Returns: 1 if multiple matches must fail authentication, 0 otherwise
+ */
+int require_unique_user_match(const pam_config_t *config) {
+  return config->require_unique_match ||
+         (config->login_attribute && strchr(config->login_attribute, ','));
+}

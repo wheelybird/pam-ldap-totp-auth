@@ -32,7 +32,7 @@ typedef struct {
   char *ldap_base;             /* LDAP base DN for searches */
   char *ldap_bind_dn;          /* Service account DN for LDAP bind (optional) */
   char *ldap_bind_password;    /* Service account password (optional) */
-  char *login_attribute;       /* LDAP attribute for user login (default: uid) */
+  char *login_attribute;       /* Comma-separated login attribute(s) (default: uid) */
   char *ldap_filter;           /* Additional LDAP filter for access control (optional) */
   char *tls_mode;              /* TLS mode: none, starttls, ldaps (default: starttls) */
   int tls_verify_cert;         /* Verify TLS certificates (default: 1) */
@@ -117,6 +117,9 @@ int is_valid_ldap_attribute(const char *attr);
 int is_valid_date(int year, int month, int day, int hour, int min, int sec);
 char *safe_strdup(const char *s);
 int validate_ldap_filter(const char *filter);
+int build_user_filter(char *buf, size_t size, const char *username,
+                      const pam_config_t *config);
+int require_unique_user_match(const pam_config_t *config);
 
 /* Utility macros */
 #define PAM_CONFIG_FILE "/etc/security/pam_ldap_totp_auth.conf"

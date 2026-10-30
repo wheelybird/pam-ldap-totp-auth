@@ -33,7 +33,6 @@ int ldap_validate_password(pam_handle_t *pamh, LDAP *ld, const char *username,
   LDAPMessage *result = NULL;
   LDAPMessage *entry;
   char *user_dn = NULL;
-  char *escaped_username = NULL;
   int retval = PAM_AUTH_ERR;
   LDAP *user_ld = NULL;
 
@@ -42,34 +41,15 @@ int ldap_validate_password(pam_handle_t *pamh, LDAP *ld, const char *username,
     return PAM_AUTH_ERR;
   }
 
-  /* OWASP: Input validation - sanitise username for LDAP filter */
-  escaped_username = ldap_escape_filter(username);
-  if (!escaped_username) {
-    syslog(LOG_ERR, "Failed to escape username for LDAP search");
-    return PAM_AUTH_ERR;
-  }
-
   /* OWASP: Validate password is not empty */
   if (strlen(password) == 0) {
     syslog(LOG_NOTICE, "Empty password provided for user '%s'", username);
-    free(escaped_username);
     return PAM_AUTH_ERR;
   }
 
-  /* Build search filter */
-  const char *login_attr = config->login_attribute ? config->login_attribute : "uid";
-
-  /* Combine username filter with additional filter if configured */
-  if (config->ldap_filter && config->ldap_filter[0] != '\0') {
-    rc = snprintf(filter, sizeof(filter), "(&(%s=%s)%s)",
-                  login_attr, escaped_username, config->ldap_filter);
-  } else {
-    rc = snprintf(filter, sizeof(filter), "(%s=%s)", login_attr, escaped_username);
-  }
-  free(escaped_username);
-
-  if (rc >= (int)sizeof(filter)) {
-    syslog(LOG_ERR, "LDAP filter too long for user '%s'", username);
+  /* OWASP: username is escaped for the LDAP filter */
+  if (!build_user_filter(filter, sizeof(filter), username, config)) {
+    syslog(LOG_ERR, "Failed to build LDAP search filter for user '%s'", username);
     return PAM_AUTH_ERR;
   }
 
@@ -98,9 +78,9 @@ int ldap_validate_password(pam_handle_t *pamh, LDAP *ld, const char *username,
   }
 
   if (count > 1) {
-    if (config->require_unique_match) {
+    if (require_unique_user_match(config)) {
       syslog(LOG_WARNING, "Multiple LDAP entries (%d) matched for user '%s', "
-             "authentication denied (require_unique_match=true)", count, username);
+             "authentication denied", count, username);
       ldap_msgfree(result);
       return PAM_AUTH_ERR;
     } else {

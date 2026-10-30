@@ -56,6 +56,8 @@ ldap_bind_password
 # LDAP attribute used for login username
 # The attribute that contains the username entered by the user
 # Common values: uid, cn, sAMAccountName (Active Directory)
+# List several, comma-separated, to accept any of them (e.g. uid,mail);
+# a login matching more than one entry is then always rejected
 # Default: uid
 login_attribute uid
 
@@ -63,6 +65,8 @@ login_attribute uid
 # Optional LDAP filter combined with username search to restrict access
 # The filter is combined with the username filter using AND logic:
 #   (&(login_attribute=username)(configured-filter))
+# or, with several login attributes:
+#   (&(|(uid=username)(mail=username))(configured-filter))
 #
 # Common use cases:
 #   1. Group membership (requires memberOf overlay):
@@ -110,6 +114,7 @@ ldap_filter
 # Require unique LDAP match
 # If true, authentication fails when multiple users match the login attribute
 # If false, first match is used (matches pam_ldap behaviour)
+# Always true when login_attribute lists more than one attribute
 # Values: true, false, 1, 0, yes, no, on, off
 # Default: false
 require_unique_match false
