@@ -9,7 +9,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Build module and unit tests
         run: docker build -f tests/Dockerfile.unittest -t pam-ldap-totp-auth:test .
