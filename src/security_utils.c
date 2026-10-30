@@ -140,7 +140,8 @@ char *ldap_escape_filter(const char *input) {
  * Validate username for safe filesystem operations
  *
  * Ensures username contains only alphanumeric characters, underscore,
- * hyphen, and period. Prevents path traversal attacks.
+ * hyphen, period, '@' and '+' (so e-mail addresses and UPNs can be used
+ * with login_attribute mail/userPrincipalName). Prevents path traversal attacks.
  *
  * Returns: 1 if safe, 0 if unsafe
  */
@@ -164,7 +165,8 @@ int is_safe_username(const char *username) {
     if (!((c >= 'a' && c <= 'z') ||
           (c >= 'A' && c <= 'Z') ||
           (c >= '0' && c <= '9') ||
-          c == '_' || c == '-' || c == '.')) {
+          c == '_' || c == '-' || c == '.' ||
+          c == '@' || c == '+')) {
       return 0;
     }
   }

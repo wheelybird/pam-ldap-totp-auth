@@ -5,6 +5,12 @@ All notable changes to the PAM LDAP TOTP authentication module will be documente
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **[#2](https://github.com/wheelybird/pam-ldap-totp-auth/issues/2)** - Usernames containing `@` or `+` are no longer rejected, so users can log in with an e-mail address or UPN when `login_attribute` is `mail` or `userPrincipalName`. Previously `is_safe_username()` refused them and the module returned `PAM_USER_UNKNOWN` before LDAP was queried. Neither character is special in an LDAP filter or a path, and the username is still escaped with `ldap_escape_filter()` before use, so injection protection is unchanged.
+
 ## [0.2.0] - 2026-01-23
 
 ### Added

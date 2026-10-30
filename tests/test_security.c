@@ -57,12 +57,16 @@ START_TEST(test_username_validation)
   ck_assert_int_eq(is_safe_username("john.doe"), 1);
   ck_assert_int_eq(is_safe_username("user_name"), 1);
   ck_assert_int_eq(is_safe_username("user-name"), 1);
+  ck_assert_int_eq(is_safe_username("user@example.com"), 1);
+  ck_assert_int_eq(is_safe_username("first.last+vpn@example.com"), 1);
 
   /* Invalid usernames */
   ck_assert_int_eq(is_safe_username(""), 0);           /* Empty */
   ck_assert_int_eq(is_safe_username(NULL), 0);         /* NULL */
   ck_assert_int_eq(is_safe_username("user;rm -rf"), 0); /* Command injection */
   ck_assert_int_eq(is_safe_username("user\n"), 0);     /* Newline */
+  ck_assert_int_eq(is_safe_username("user@../etc"), 0); /* Path traversal */
+  ck_assert_int_eq(is_safe_username("user@ex*ample"), 0); /* Filter wildcard */
 
   /* Note: Embedded null bytes ("\0") can't exist in C strings by definition.
    * PAM provides usernames as proper C strings, so this case is theoretical.
