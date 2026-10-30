@@ -111,31 +111,13 @@ char *ldap_get_totp_secret(pam_handle_t *pamh, LDAP *ld, const char *username,
   struct berval **values;
   char *secret = NULL;
   size_t prefix_len = strlen(config->totp_prefix);
-  char *escaped_username = NULL;
 
-  /* Build search filter with LDAP injection protection */
-  escaped_username = ldap_escape_filter(username);
-  if (!escaped_username) {
-    pam_syslog(pamh, LOG_ERR, "Failed to escape username for LDAP filter");
-    return NULL;
-  }
+  DEBUG_LOG(config, "Using login attribute(s): %s",
+            config->login_attribute ? config->login_attribute : "uid");
 
-  const char *search_attr = config->login_attribute ? config->login_attribute : "uid";
-  DEBUG_LOG(config, "Using login attribute: %s (login_attribute=%s)",
-            search_attr, config->login_attribute ? config->login_attribute : "(null)");
-
-  /* Combine username filter with additional filter if configured */
-  if (config->ldap_filter && config->ldap_filter[0] != '\0') {
-    rc = snprintf(filter, sizeof(filter), "(&(%s=%s)%s)",
-                  search_attr, escaped_username, config->ldap_filter);
-  } else {
-    rc = snprintf(filter, sizeof(filter), "(%s=%s)", search_attr, escaped_username);
-  }
-  free(escaped_username);
-
-  /* Check for buffer overflow */
-  if (rc >= (int)sizeof(filter)) {
-    pam_syslog(pamh, LOG_ERR, "LDAP filter too long for user '%s'", username);
+  /* Username is escaped for the filter to prevent LDAP injection */
+  if (!build_user_filter(filter, sizeof(filter), username, config)) {
+    pam_syslog(pamh, LOG_ERR, "Failed to build LDAP search filter for user '%s'", username);
     return NULL;
   }
 
@@ -156,7 +138,7 @@ char *ldap_get_totp_secret(pam_handle_t *pamh, LDAP *ld, const char *username,
   DEBUG_LOG(config, "LDAP search returned %d entries", count);
 
   /* Check for multiple matches if required */
-  if (count > 1 && config->require_unique_match) {
+  if (count > 1 && require_unique_user_match(config)) {
     pam_syslog(pamh, LOG_WARNING, "Multiple LDAP entries (%d) matched for user '%s' - cannot authenticate. "
                "Administrator should configure LDAP filter to ensure unique match.", count, username);
     ldap_msgfree(result);
@@ -255,29 +237,10 @@ int ldap_check_scratch_code(pam_handle_t *pamh, LDAP *ld, const char *username,
   LDAPMessage *entry;
   struct berval **values;
   int found = 0;
-  char *escaped_username = NULL;
 
-  /* Build search filter with LDAP injection protection */
-  escaped_username = ldap_escape_filter(username);
-  if (!escaped_username) {
-    pam_syslog(pamh, LOG_ERR, "Failed to escape username for LDAP filter");
-    return 0;
-  }
-
-  const char *search_attr = config->login_attribute ? config->login_attribute : "uid";
-
-  /* Combine username filter with additional filter if configured */
-  if (config->ldap_filter && config->ldap_filter[0] != '\0') {
-    rc = snprintf(filter, sizeof(filter), "(&(%s=%s)%s)",
-                  search_attr, escaped_username, config->ldap_filter);
-  } else {
-    rc = snprintf(filter, sizeof(filter), "(%s=%s)", search_attr, escaped_username);
-  }
-  free(escaped_username);
-
-  /* Check for buffer overflow */
-  if (rc >= (int)sizeof(filter)) {
-    pam_syslog(pamh, LOG_ERR, "LDAP filter too long for user '%s'", username);
+  /* Username is escaped for the filter to prevent LDAP injection */
+  if (!build_user_filter(filter, sizeof(filter), username, config)) {
+    pam_syslog(pamh, LOG_ERR, "Failed to build LDAP search filter for user '%s'", username);
     return 0;
   }
 
@@ -295,7 +258,7 @@ int ldap_check_scratch_code(pam_handle_t *pamh, LDAP *ld, const char *username,
 
   /* Check for multiple matches if required */
   int count = ldap_count_entries(ld, result);
-  if (count > 1 && config->require_unique_match) {
+  if (count > 1 && require_unique_user_match(config)) {
     pam_syslog(pamh, LOG_WARNING, "Multiple LDAP entries (%d) matched for user '%s' - cannot authenticate. "
                "Administrator should configure LDAP filter to ensure unique match.", count, username);
     ldap_msgfree(result);
@@ -386,29 +349,10 @@ char *ldap_get_attribute(pam_handle_t *pamh, LDAP *ld, const char *username,
   LDAPMessage *entry;
   struct berval **values;
   char *value = NULL;
-  char *escaped_username = NULL;
 
-  /* Build search filter with LDAP injection protection */
-  escaped_username = ldap_escape_filter(username);
-  if (!escaped_username) {
-    pam_syslog(pamh, LOG_ERR, "Failed to escape username for LDAP filter");
-    return NULL;
-  }
-
-  const char *search_attr = config->login_attribute ? config->login_attribute : "uid";
-
-  /* Combine username filter with additional filter if configured */
-  if (config->ldap_filter && config->ldap_filter[0] != '\0') {
-    rc = snprintf(filter, sizeof(filter), "(&(%s=%s)%s)",
-                  search_attr, escaped_username, config->ldap_filter);
-  } else {
-    rc = snprintf(filter, sizeof(filter), "(%s=%s)", search_attr, escaped_username);
-  }
-  free(escaped_username);
-
-  /* Check for buffer overflow */
-  if (rc >= (int)sizeof(filter)) {
-    pam_syslog(pamh, LOG_ERR, "LDAP filter too long for user '%s'", username);
+  /* Username is escaped for the filter to prevent LDAP injection */
+  if (!build_user_filter(filter, sizeof(filter), username, config)) {
+    pam_syslog(pamh, LOG_ERR, "Failed to build LDAP search filter for user '%s'", username);
     return NULL;
   }
 
@@ -424,7 +368,7 @@ char *ldap_get_attribute(pam_handle_t *pamh, LDAP *ld, const char *username,
 
   /* Check for multiple matches if required */
   int count = ldap_count_entries(ld, result);
-  if (count > 1 && config->require_unique_match) {
+  if (count > 1 && require_unique_user_match(config)) {
     pam_syslog(pamh, LOG_WARNING, "Multiple LDAP entries (%d) matched for user '%s' - cannot authenticate. "
                "Administrator should configure LDAP filter to ensure unique match.", count, username);
     ldap_msgfree(result);

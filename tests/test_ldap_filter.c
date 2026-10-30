@@ -373,10 +373,91 @@ START_TEST(test_ldap_filter_special_chars)
 }
 END_TEST
 
+/* Test user search filter construction (#4: multiple login attributes) */
+START_TEST(test_build_user_filter)
+{
+  pam_config_t cfg;
+  char buf[1024];
+  memset(&cfg, 0, sizeof(cfg));
+
+  /* Unset login_attribute falls back to uid */
+  ck_assert_int_eq(build_user_filter(buf, sizeof(buf), "alice", &cfg), 1);
+  ck_assert_str_eq(buf, "(uid=alice)");
+
+  cfg.login_attribute = "mail";
+  ck_assert_int_eq(build_user_filter(buf, sizeof(buf), "a@example.com", &cfg), 1);
+  ck_assert_str_eq(buf, "(mail=a@example.com)");
+
+  cfg.login_attribute = "uid,mail";
+  ck_assert_int_eq(build_user_filter(buf, sizeof(buf), "alice", &cfg), 1);
+  ck_assert_str_eq(buf, "(|(uid=alice)(mail=alice))");
+
+  cfg.login_attribute = " uid , mail ,cn";
+  ck_assert_int_eq(build_user_filter(buf, sizeof(buf), "alice", &cfg), 1);
+  ck_assert_str_eq(buf, "(|(uid=alice)(mail=alice)(cn=alice))");
+
+  cfg.ldap_filter = "(memberOf=cn=vpn,dc=example,dc=com)";
+  ck_assert_int_eq(build_user_filter(buf, sizeof(buf), "alice", &cfg), 1);
+  ck_assert_str_eq(buf, "(&(|(uid=alice)(mail=alice)(cn=alice))(memberOf=cn=vpn,dc=example,dc=com))");
+
+  cfg.login_attribute = "uid";
+  ck_assert_int_eq(build_user_filter(buf, sizeof(buf), "alice", &cfg), 1);
+  ck_assert_str_eq(buf, "(&(uid=alice)(memberOf=cn=vpn,dc=example,dc=com))");
+}
+END_TEST
+
+START_TEST(test_build_user_filter_escapes_username)
+{
+  pam_config_t cfg;
+  char buf[1024];
+  memset(&cfg, 0, sizeof(cfg));
+
+  cfg.login_attribute = "uid,mail";
+  ck_assert_int_eq(build_user_filter(buf, sizeof(buf), "*)(uid=*", &cfg), 1);
+  ck_assert_str_eq(buf, "(|(uid=\\2a\\29\\28uid=\\2a)(mail=\\2a\\29\\28uid=\\2a))");
+}
+END_TEST
+
+START_TEST(test_build_user_filter_rejects_bad_input)
+{
+  pam_config_t cfg;
+  char buf[1024];
+  char small[16];
+  memset(&cfg, 0, sizeof(cfg));
+
+  const char *bad[] = { "uid,(cn=*)", "uid,", ",", "uid mail", "uid,ma=il", NULL };
+  for (int i = 0; bad[i]; i++) {
+    cfg.login_attribute = (char *)bad[i];
+    ck_assert_msg(build_user_filter(buf, sizeof(buf), "alice", &cfg) == 0,
+                  "login_attribute '%s' should be rejected", bad[i]);
+  }
+
+  cfg.login_attribute = "uid,mail";
+  ck_assert_int_eq(build_user_filter(small, sizeof(small), "alice", &cfg), 0);
+}
+END_TEST
+
+START_TEST(test_require_unique_user_match)
+{
+  pam_config_t cfg;
+  memset(&cfg, 0, sizeof(cfg));
+
+  cfg.login_attribute = "uid";
+  ck_assert_int_eq(require_unique_user_match(&cfg), 0);
+  cfg.require_unique_match = 1;
+  ck_assert_int_eq(require_unique_user_match(&cfg), 1);
+
+  /* Several attributes always require a unique match */
+  cfg.require_unique_match = 0;
+  cfg.login_attribute = "uid,mail";
+  ck_assert_int_eq(require_unique_user_match(&cfg) != 0, 1);
+}
+END_TEST
+
 /* Test Suite Setup */
 Suite *ldap_filter_suite(void) {
   Suite *s;
-  TCase *tc_validation, *tc_config, *tc_edge_cases;
+  TCase *tc_validation, *tc_config, *tc_user_filter, *tc_edge_cases;
 
   s = suite_create("LDAP Filter Tests");
 
@@ -399,6 +480,14 @@ Suite *ldap_filter_suite(void) {
   tcase_add_test(tc_config, test_config_parsing_complex_filters);
   tcase_add_test(tc_config, test_config_free_ldap_filter);
   suite_add_tcase(s, tc_config);
+
+  /* User search filter construction */
+  tc_user_filter = tcase_create("User Search Filter");
+  tcase_add_test(tc_user_filter, test_build_user_filter);
+  tcase_add_test(tc_user_filter, test_build_user_filter_escapes_username);
+  tcase_add_test(tc_user_filter, test_build_user_filter_rejects_bad_input);
+  tcase_add_test(tc_user_filter, test_require_unique_user_match);
+  suite_add_tcase(s, tc_user_filter);
 
   /* Edge cases */
   tc_edge_cases = tcase_create("Edge Cases");

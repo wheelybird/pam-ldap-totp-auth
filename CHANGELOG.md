@@ -5,6 +5,17 @@ All notable changes to the PAM LDAP TOTP authentication module will be documente
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **[#4](https://github.com/wheelybird/pam-ldap-totp-auth/issues/4)** - `login_attribute` accepts a comma-separated list, so users can log in with any of several attributes, e.g. `login_attribute uid,mail` searches with `(|(uid=username)(mail=username))` (combined with `ldap_filter` as before). Because one user's uid could equal another's e-mail address, a login matching more than one entry is always rejected when several attributes are listed, regardless of `require_unique_match`. Single-attribute behaviour is unchanged.
+
+### Changed
+
+- Each `login_attribute` name is now validated before it is used in a search filter; an invalid name fails authentication with an error in syslog instead of being inserted into the filter as-is.
+- The user search filter is built in one place (`build_user_filter()`) rather than in four copies across `ldap_auth.c` and `ldap_query.c`.
+
 ## [0.2.1] - 2026-10-30
 
 ### Fixed

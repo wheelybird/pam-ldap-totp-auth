@@ -399,7 +399,7 @@ ldapsearch -x -H ldap://localhost -b "dc=example,dc=com" "(uid=USERNAME)" member
 
 With `debug true` in config, you should see:
 ```
-[PAM_LDAP_TOTP:DEBUG] Using login attribute: uid (login_attribute=uid)
+[PAM_LDAP_TOTP:DEBUG] Using login attribute(s): uid
 [PAM_LDAP_TOTP:DEBUG] LDAP search: base='dc=example,dc=com' filter='(&(uid=username)(memberOf=cn=vpn-users,ou=groups,dc=example,dc=com))' attr='totpSecret'
 [PAM_LDAP_TOTP:DEBUG] LDAP search returned N entries
 ```

@@ -102,7 +102,7 @@ See `pam_ldap_totp_auth.conf.example` for all available settings
 - `tls_mode` - TLS/SSL settings (`on`, `starttls`, or `off`)
 - `tls_verify_cert` - Certificate validation (`true`/`false`)
 - `tls_ca_cert_file` - Path to CA certificate file
-- `login_attribute` - LDAP attribute for user login (default: `uid`)
+- `login_attribute` - LDAP attribute(s) for user login, comma-separated (default: `uid`)
 
 **Login attribute configuration:**
 
@@ -115,6 +115,14 @@ login_attribute mail
 ```
 
 The module will search for users using `(mail=username)` instead of `(uid=username)`. This is useful for environments where users authenticate with email addresses.  See "Multiple match handling" below for how this handles multiple matches for that attribute.
+
+To let users log in with any of several attributes, list them separated by commas:
+```conf
+# Users can log in with either their uid or their email address
+login_attribute uid,mail
+```
+
+The module then searches with `(|(uid=username)(mail=username))`. Because one user's uid could equal another user's email address, a login that matches more than one entry is always rejected when several attributes are listed, whatever `require_unique_match` is set to.
 
 ## Installation
 
@@ -288,6 +296,8 @@ The `require_unique_match` option controls behavior when multiple LDAP entries m
 
 - `require_unique_match false` (default) - Uses the first matching entry, consistent with `pam_ldap.so` behavior
 - `require_unique_match true` - Fails authentication if multiple entries match, logging a warning
+
+When `login_attribute` lists more than one attribute, multiple matches are always rejected.
 
 **Recommendation:** Leave this at the default (`false`) unless you have strict security requirements. If enabled, administrators must ensure LDAP filters and login attributes produce unique matches (e.g., by using unique email addresses).
 
