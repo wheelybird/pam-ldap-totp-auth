@@ -280,15 +280,19 @@ debug false
 
 **MFA enforcement modes:**
 
-The `enforcement_mode` option controls how strictly MFA is enforced and how password-only authentication is handled:
+The `enforcement_mode` option controls what happens to users who have no TOTP secret. Users with a secret always need a valid code (or backup code), whatever the mode.
 
-- `enforcement_mode graceful` (default) - Allow password-only authentication for users without TOTP configured. Users with `totpStatus=pending` get a grace period. **Recommended for mixed environments.**
-- `enforcement_mode warn_only` - Allow password-only authentication but log security warnings to syslog. **Useful for MFA rollout testing.**
-- `enforcement_mode strict` - Require TOTP for ALL users. Users without TOTP configured are denied access. **Use only when all users have MFA.**
+| Mode | Users without a TOTP secret |
+|------|-----------------------------|
+| `graceful` (default) | Allowed with password alone only while `totpStatus=pending` and within their grace period. Everyone else (no status, `none`, `disabled`, expired, or a missing/invalid `totpEnrolledDate`) is denied. |
+| `strict` | Always denied, including pending users. |
+| `warn_only` | Allowed with password alone. **For testing an MFA rollout only.** |
 
-**Password-only authentication behavior:**
-- `graceful` and `warn_only` modes: Users without the `totpUser` objectClass can authenticate with password alone
-- `strict` mode: All users must have TOTP configured; password-only authentication is rejected
+An unrecognised mode is treated as `strict`. Every password-only success and every denial is logged to syslog.
+
+Both append and challenge-response modes apply the same rules.
+
+Before 0.4.0, `graceful` allowed password-only authentication indefinitely for anyone whose status wasn't `pending` ([#8](https://github.com/wheelybird/pam-ldap-totp-auth/issues/8)), and `strict` still honoured grace periods.
 
 **Multiple match handling:**
 
@@ -659,8 +663,10 @@ The grace period feature allows users time to set up MFA while providing informa
 - Grace period length is determined by:
   1. **User-specific period** - Read from LDAP attribute (`grace_period_attribute`, default: `mfaGracePeriodDays`)
   2. **Global default** - Fallback to `grace_period_days` from config if LDAP attribute is not set
-- Calculation: `days_elapsed = (current_date - totpEnrolledDate) / 86400`
-- If `days_elapsed > grace_period_days`, MFA is enforced
+- Calculation: `days_elapsed = (current_date - totpEnrolledDate) / 86400`, with `totpEnrolledDate` read as UTC
+- Once `days_elapsed` reaches the grace period, MFA is enforced
+- A missing, unparseable or future `totpEnrolledDate` denies access rather than granting an open-ended grace period
+- Grace periods only apply with `enforcement_mode graceful`
 
 **Grace period messaging (challenge-response mode only):**
 
@@ -672,7 +678,7 @@ When `show_grace_message` is enabled (default: `true`), users in grace period se
 ```
 Password: [user enters password]
 
-*** MFA ENROLLMENT REQUIRED ***
+*** MFA ENROLMENT REQUIRED ***
 You have 5 days remaining to set up multi-factor authentication.
 Please visit https://auth.example.com/manage_mfa
 

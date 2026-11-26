@@ -12,7 +12,7 @@ SRC_DIR = ../src
 OBJDIR = obj
 
 # Test executables
-TESTS = test_config test_ldap_auth test_totp test_security test_challenge_response test_grace_period test_ldap_filter
+TESTS = test_config test_ldap_auth test_totp test_security test_challenge_response test_grace_period test_ldap_filter test_mfa_policy
 
 .PHONY: all clean run check
 
@@ -32,6 +32,9 @@ $(OBJDIR)/totp_validate.o: $(SRC_DIR)/totp_validate.c | $(OBJDIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(OBJDIR)/security_utils.o: $(SRC_DIR)/security_utils.c | $(OBJDIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(OBJDIR)/mfa_policy.o: $(SRC_DIR)/mfa_policy.c | $(OBJDIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # Create object directory
@@ -58,6 +61,9 @@ test_grace_period: test_grace_period.c $(OBJDIR)/config.o $(OBJDIR)/security_uti
 	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
 
 test_ldap_filter: test_ldap_filter.c $(OBJDIR)/config.o $(OBJDIR)/security_utils.o
+	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
+
+test_mfa_policy: test_mfa_policy.c $(OBJDIR)/mfa_policy.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
 
 # Run all tests

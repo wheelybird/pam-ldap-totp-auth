@@ -14,7 +14,8 @@ OBJDIR = obj
 
 # Source files for standalone LDAP + TOTP authentication
 SOURCES = $(SRCDIR)/pam_auth.c $(SRCDIR)/config.c $(SRCDIR)/ldap_auth.c \
-          $(SRCDIR)/ldap_query.c $(SRCDIR)/totp_validate.c $(SRCDIR)/security_utils.c
+          $(SRCDIR)/ldap_query.c $(SRCDIR)/totp_validate.c $(SRCDIR)/security_utils.c \
+          $(SRCDIR)/mfa_policy.c
 OBJECTS = $(SOURCES:$(SRCDIR)/%.c=$(OBJDIR)/%.o)
 
 .PHONY: all clean install test check

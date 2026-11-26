@@ -5,6 +5,21 @@ All notable changes to the PAM LDAP TOTP authentication module will be documente
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- **[#8](https://github.com/wheelybird/pam-ldap-totp-auth/issues/8)** - In append mode, `enforcement_mode graceful` (the default) allowed any user without a TOTP secret to authenticate with their password alone, indefinitely, unless their `totpStatus` was `pending`. This included users who had never been set to pending and users who had disabled MFA. `graceful` now allows password-only authentication only for pending users within their grace period and denies everyone else without a secret.
+- A pending user with a missing, unparseable or future `totpEnrolledDate` is now denied rather than allowed.
+
+### Changed
+
+- `enforcement_mode strict` no longer honours grace periods: every user without a TOTP secret is denied. Use `graceful` (the default) for grace periods. **If you switched to `strict` as a workaround for #8, switch back to `graceful` when upgrading.**
+- Append and challenge-response modes now make the same decision for users without a secret (previously challenge mode ignored `enforcement_mode`). The decision lives in `src/mfa_policy.c` and is unit tested.
+- The per-user grace period (`grace_period_attribute`) now sets when access is denied, not just the days-remaining message.
+- `totpEnrolledDate` is read as UTC, as LDAP GeneralizedTime specifies, rather than local time.
+- Password-only logins and MFA denials are now logged to syslog in every mode (previously only `warn_only` wrote to syslog; `graceful` logged to stderr).
+
 ## [0.3.0] - 2026-10-30
 
 ### Added
