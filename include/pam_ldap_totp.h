@@ -9,9 +9,9 @@
 #define PAM_LDAP_TOTP_H
 
 /* Version information */
-#define PAM_LDAP_TOTP_VERSION "0.3.0"
+#define PAM_LDAP_TOTP_VERSION "0.4.0"
 #define PAM_LDAP_TOTP_VERSION_MAJOR 0
-#define PAM_LDAP_TOTP_VERSION_MINOR 3
+#define PAM_LDAP_TOTP_VERSION_MINOR 4
 #define PAM_LDAP_TOTP_VERSION_PATCH 0
 
 #include <security/pam_modules.h>
